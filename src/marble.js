@@ -1,8 +1,27 @@
 import * as THREE from 'three';
 
-const SIZE = 1024;
-const LOW = 512;
+let SIZE = 1024;
+let LOW = 512;
+let UNIT = 1;
 const CELLS = 22;
+
+function px(n) {
+  return n * UNIT;
+}
+
+function pickSize(renderer) {
+  const maxTex = renderer?.capabilities?.maxTextureSize || 2048;
+  const w = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const shortSide = Math.min(w, h);
+  const longSide = Math.max(w, h);
+  // Phones and small windows. A 1280×720 desktop stays at 1024.
+  const small = shortSide < 700 && longSide < 1100;
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  let chosen = small || coarse ? 512 : 1024;
+  if (maxTex < chosen) chosen = Math.max(256, maxTex);
+  return chosen;
+}
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -158,7 +177,7 @@ function strokeWrapped(ctx, paths, style, width) {
 }
 
 function strokePhase(ctx, paths, width) {
-  const period = 320;
+  const period = px(320);
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -250,13 +269,13 @@ function paintStone(rand) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(low, 0, 0, SIZE, SIZE);
 
-  const soft = makePaths(rand, 7, 70, 0.85, 0.12);
-  strokeWrapped(ctx, soft, 'rgba(132,136,144,0.20)', 22);
-  strokeWrapped(ctx, soft, 'rgba(74,78,86,0.30)', 6);
+  const soft = makePaths(rand, 7, px(70), 0.85, 0.12);
+  strokeWrapped(ctx, soft, 'rgba(132,136,144,0.20)', px(22));
+  strokeWrapped(ctx, soft, 'rgba(74,78,86,0.30)', px(6));
 
-  const threads = makePaths(rand, 16, 46, 1.05, 0.2);
-  strokeWrapped(ctx, threads, 'rgba(58,62,70,0.45)', 3.2);
-  strokeWrapped(ctx, threads, 'rgba(22,24,28,0.82)', 1.25);
+  const threads = makePaths(rand, 16, px(46), 1.05, 0.2);
+  strokeWrapped(ctx, threads, 'rgba(58,62,70,0.45)', px(3.2));
+  strokeWrapped(ctx, threads, 'rgba(22,24,28,0.82)', px(1.25));
 
   return { color, ctx };
 }
@@ -292,14 +311,14 @@ function buildCrackle(rand, stone) {
       const o = (row + x) * 4;
       const u = x / SIZE;
       const v = y / SIZE;
-      let sx = x + (warp(u * 2.2, v * 2.2) - 0.5) * 18;
-      let sy = y + (warp(u * 2.2 + 3.1, v * 2.2 + 1.4) - 0.5) * 18;
-      let px = sx % SIZE;
-      let py = sy % SIZE;
-      if (px < 0) px += SIZE;
-      if (py < 0) py += SIZE;
-      const cx = Math.min(CELLS - 1, (px / cell) | 0);
-      const cy = Math.min(CELLS - 1, (py / cell) | 0);
+      let sx = x + (warp(u * 2.2, v * 2.2) - 0.5) * px(18);
+      let sy = y + (warp(u * 2.2 + 3.1, v * 2.2 + 1.4) - 0.5) * px(18);
+      let wrappedX = sx % SIZE;
+      let wrappedY = sy % SIZE;
+      if (wrappedX < 0) wrappedX += SIZE;
+      if (wrappedY < 0) wrappedY += SIZE;
+      const cx = Math.min(CELLS - 1, (wrappedX / cell) | 0);
+      const cy = Math.min(CELLS - 1, (wrappedY / cell) | 0);
 
       let d1 = 1e12;
       let d2 = 1e12;
@@ -331,10 +350,10 @@ function buildCrackle(rand, stone) {
       const fade = hash01(lo + 3, hi * 17 + 1);
       const strength = smoothstep(0.12, 0.48, fade);
       const isGold = fade > 0.6;
-      const crack = smoothstep(5.4, 0.35, edge) * (0.28 + 0.72 * strength);
-      const gold = isGold ? smoothstep(3.15, 0.2, edge) * strength : 0;
-      const goldCore = isGold ? smoothstep(1.35, 0.12, edge) * strength : 0;
-      const glow = isGold ? smoothstep(8.2, 0.6, edge) * strength : 0;
+      const crack = smoothstep(px(5.4), px(0.35), edge) * (0.28 + 0.72 * strength);
+      const gold = isGold ? smoothstep(px(3.15), px(0.2), edge) * strength : 0;
+      const goldCore = isGold ? smoothstep(px(1.35), px(0.12), edge) * strength : 0;
+      const glow = isGold ? smoothstep(px(8.2), px(0.6), edge) * strength : 0;
 
       const br = base[o];
       const bg = base[o + 1];
@@ -398,7 +417,7 @@ function buildCrackle(rand, stone) {
         const ppy = wrapDelta(sy - ay);
         const len = Math.hypot(adx, ady) || 1;
         const along = (ppx * adx + ppy * ady) / len;
-        const period = 280;
+        const period = px(280);
         const t = ((along % period) + period) % period;
         phase[row + x] = (t / period) * 255;
       }
@@ -410,19 +429,19 @@ function buildCrackle(rand, stone) {
 }
 
 function layHeroVeins(rand, colorCtx, maps) {
-  const heroes = makePaths(rand, 8, 58, 0.72, 0.28);
-  strokeWrapped(colorCtx, heroes, 'rgba(8,8,10,0.95)', 8);
-  strokeWrapped(colorCtx, heroes, '#7a4e12', 4.6);
-  strokeWrapped(colorCtx, heroes, '#e7b44a', 2.5);
-  strokeWrapped(colorCtx, heroes, '#ffe6b0', 1.05);
+  const heroes = makePaths(rand, 8, px(58), 0.72, 0.28);
+  strokeWrapped(colorCtx, heroes, 'rgba(8,8,10,0.95)', px(8));
+  strokeWrapped(colorCtx, heroes, '#7a4e12', px(4.6));
+  strokeWrapped(colorCtx, heroes, '#e7b44a', px(2.5));
+  strokeWrapped(colorCtx, heroes, '#ffe6b0', px(1.05));
 
   const mask = document.createElement('canvas');
   mask.width = mask.height = SIZE;
   const maskCtx = mask.getContext('2d', { willReadFrequently: true });
   maskCtx.globalCompositeOperation = 'lighter';
-  strokeWrapped(maskCtx, heroes, 'rgb(255,0,0)', 8);
-  strokeWrapped(maskCtx, heroes, 'rgb(0,255,0)', 9);
-  strokeWrapped(maskCtx, heroes, 'rgb(0,0,255)', 3.1);
+  strokeWrapped(maskCtx, heroes, 'rgb(255,0,0)', px(8));
+  strokeWrapped(maskCtx, heroes, 'rgb(0,255,0)', px(9));
+  strokeWrapped(maskCtx, heroes, 'rgb(0,0,255)', px(3.1));
 
   const phaseCanvas = document.createElement('canvas');
   phaseCanvas.width = phaseCanvas.height = SIZE;
@@ -434,7 +453,7 @@ function layHeroVeins(rand, colorCtx, maps) {
     phaseImage.data[o + 3] = 255;
   }
   phaseCtx.putImageData(phaseImage, 0, 0);
-  strokePhase(phaseCtx, heroes, 4);
+  strokePhase(phaseCtx, heroes, px(4));
 
   const maskData = maskCtx.getImageData(0, 0, SIZE, SIZE).data;
   const { rough, metal, emissive, height } = maps;
@@ -473,7 +492,7 @@ function bleedEmissive(emissive) {
   const w = SIZE;
   const src = emissive;
   const tmp = new Uint8ClampedArray(src.length);
-  const rad = 2;
+  const rad = Math.max(1, Math.round(px(2)));
   for (let y = 0; y < w; y++) {
     for (let x = 0; x < w; x++) {
       let r = 0;
@@ -527,8 +546,9 @@ function normalsFromHeight(height) {
   };
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const dx = at(x - 2, y) - at(x + 2, y);
-      const dy = at(x, y - 2) - at(x, y + 2);
+      const step = Math.max(1, Math.round(px(2)));
+      const dx = at(x - step, y) - at(x + step, y);
+      const dy = at(x, y - step) - at(x, y + step);
       let nx = dx * 3.1;
       let ny = dy * 3.1;
       let nz = 1;
@@ -551,7 +571,7 @@ function canvasTexture(canvas, colorSpace, renderer) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = colorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  tex.anisotropy = Math.min(SIZE >= 1024 ? 8 : 4, renderer.capabilities.getMaxAnisotropy());
   tex.needsUpdate = true;
   return tex;
 }
@@ -567,6 +587,94 @@ const SHADER_DECL = /* glsl */ `
 uniform float uMarbleTime;
 uniform float uMarbleStill;
 uniform sampler2D uMarblePhase;
+`;
+
+const BODY_DECL = /* glsl */ `
+uniform float uProject;
+uniform mat4 uMarbleMatrix;
+uniform mat3 uMarbleNormalMatrix;
+varying vec3 vMarblePos;
+varying vec3 vMarbleNormal;
+
+vec4 marbleSample(sampler2D tex, vec3 p, vec3 w) {
+  return texture2D(tex, p.zy) * w.x
+    + texture2D(tex, p.xz) * w.y
+    + texture2D(tex, p.xy) * w.z;
+}
+`;
+
+const BODY_MAP = /* glsl */ `
+vec3 marbleP = (uMarbleMatrix * vec4(vMarblePos, 1.0)).xyz * 0.85;
+vec3 marbleN = normalize(uMarbleNormalMatrix * vMarbleNormal);
+vec3 marbleW = abs(marbleN);
+marbleW = pow(max(marbleW, vec3(1.0e-4)), vec3(4.0));
+marbleW /= (marbleW.x + marbleW.y + marbleW.z);
+#ifdef USE_MAP
+  vec4 sampledDiffuseColor;
+  if (uProject > 0.5) sampledDiffuseColor = marbleSample(map, marbleP, marbleW);
+  else sampledDiffuseColor = texture2D(map, vMapUv);
+  diffuseColor *= sampledDiffuseColor;
+#endif
+`;
+
+const BODY_ROUGH = /* glsl */ `
+float roughnessFactor = roughness;
+#ifdef USE_ROUGHNESSMAP
+  vec4 texelRoughness;
+  if (uProject > 0.5) texelRoughness = marbleSample(roughnessMap, marbleP, marbleW);
+  else texelRoughness = texture2D(roughnessMap, vRoughnessMapUv);
+  roughnessFactor *= texelRoughness.g;
+#endif
+`;
+
+const BODY_METAL = /* glsl */ `
+float metalnessFactor = metalness;
+#ifdef USE_METALNESSMAP
+  vec4 texelMetalness;
+  if (uProject > 0.5) texelMetalness = marbleSample(metalnessMap, marbleP, marbleW);
+  else texelMetalness = texture2D(metalnessMap, vMetalnessMapUv);
+  metalnessFactor *= texelMetalness.b;
+#endif
+`;
+
+const BODY_NORMAL = /* glsl */ `
+{
+  float marbleH = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+  vec3 sigmaX = dFdx(vViewPosition);
+  vec3 sigmaY = dFdy(vViewPosition);
+  vec3 r1 = cross(sigmaY, normal);
+  vec3 r2 = cross(normal, sigmaX);
+  float det = dot(sigmaX, r1);
+  vec3 grad = sign(det) * (dFdx(marbleH) * r1 + dFdy(marbleH) * r2);
+  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 4.0);
+  normal = mix(normal, bumped, uProject);
+}
+`;
+
+const BODY_EMISSIVE = /* glsl */ `
+#ifdef USE_EMISSIVEMAP
+  vec4 emissiveColor;
+  if (uProject > 0.5) emissiveColor = marbleSample(emissiveMap, marbleP, marbleW);
+  else emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
+  totalEmissiveRadiance *= emissiveColor.rgb;
+#endif
+`;
+
+const BODY_PHASE = /* glsl */ `
+{
+  float phase = uProject > 0.5
+    ? marbleSample(uMarblePhase, marbleP, marbleW).r
+    : texture2D(uMarblePhase, vEmissiveMapUv).r;
+  float travel = fract(phase - uMarbleTime * 0.09);
+  float band = smoothstep(0.02, 0.18, travel) * smoothstep(0.64, 0.28, travel);
+  band *= 1.0 - smoothstep(0.045, 0.2, fwidth(phase));
+  float breath = 0.92 + 0.08 * sin(uMarbleTime * 0.48 + phase * 6.2831853);
+  float glow = (0.46 + 0.54 * band) * breath;
+  glow *= mix(1.0, 0.07, uMarbleStill);
+  float eLuma = dot(totalEmissiveRadiance, vec3(0.2126, 0.7152, 0.0722));
+  vec3 cooled = vec3(0.58, 0.66, 0.56) * eLuma;
+  totalEmissiveRadiance = mix(totalEmissiveRadiance, cooled, uMarbleStill) * glow;
+}
 `;
 
 const SHADER_FORM = /* glsl */ `
@@ -612,8 +720,12 @@ const WING_UV = /* glsl */ `
 #if defined( USE_UV ) || defined( USE_ANISOTROPY )
   vUv = uv;
 #endif
-vec3 featherPos = (instanceMatrix * vec4(position, 1.0)).xyz;
-vec2 featherUv = featherPos.xy * vec2(0.95, 1.05);
+#ifdef USE_INSTANCING
+  vec3 featherPos = (instanceMatrix * vec4(position, 1.0)).xyz;
+#else
+  vec3 featherPos = position;
+#endif
+vec2 featherUv = featherPos.xy * vec2(0.85, 0.85);
 #ifdef USE_MAP
   vMapUv = featherUv;
 #endif
@@ -631,22 +743,64 @@ vec2 featherUv = featherPos.xy * vec2(0.95, 1.05);
 #endif
 `;
 
-function injectFragment(source) {
-  const replacements = [
-    ['#include <common>', `#include <common>\n${SHADER_DECL}`],
-    ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${SHADER_FORM}`],
-    [
-      'vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;',
-      `vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;\n${SHADER_SSS}`,
-    ],
-    ['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${SHADER_PULSE}`],
-  ];
-  let out = source;
-  for (const [needle, insert] of replacements) {
-    if (!out.includes(needle)) throw new Error(`marble shader is missing ${needle}`);
-    out = out.replace(needle, insert);
+function replaceChunk(source, needle, insert) {
+  if (!source.includes(needle)) throw new Error(`marble shader is missing ${needle}`);
+  return source.replace(needle, insert);
+}
+
+function injectFragment(source, projectBody) {
+  let out = replaceChunk(source, '#include <common>', `#include <common>\n${SHADER_DECL}`);
+  if (projectBody) {
+    out = replaceChunk(out, '#include <common>', `#include <common>\n${BODY_DECL}`);
+    out = replaceChunk(out, '#include <map_fragment>', BODY_MAP);
+    out = replaceChunk(out, '#include <roughnessmap_fragment>', BODY_ROUGH);
+    out = replaceChunk(out, '#include <metalnessmap_fragment>', BODY_METAL);
+    out = replaceChunk(out, '#include <emissivemap_fragment>', `${BODY_EMISSIVE}\n${BODY_PHASE}`);
+  } else {
+    out = replaceChunk(out, '#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${SHADER_PULSE}`);
   }
+  out = replaceChunk(out, '#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${projectBody ? BODY_NORMAL : ''}${SHADER_FORM}`);
+  out = replaceChunk(
+    out,
+    'vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;',
+    `vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;\n${SHADER_SSS}`,
+  );
   return out;
+}
+
+const rootInverse = new THREE.Matrix4();
+
+function marbleMatrix(object, target) {
+  let root = object;
+  while (root.parent && !root.parent.isScene) root = root.parent;
+  rootInverse.copy(root.matrixWorld).invert();
+  target.multiplyMatrices(rootInverse, object.matrixWorld);
+}
+
+function uvSpan(geometry) {
+  const cached = geometry.userData.marbleUvSpan;
+  if (cached !== undefined) return cached;
+  const uv = geometry.attributes?.uv;
+  if (!uv || uv.count === 0) {
+    geometry.userData.marbleUvSpan = 1;
+    return 1;
+  }
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+  const step = Math.max(1, Math.floor(uv.count / 240));
+  for (let i = 0; i < uv.count; i += step) {
+    const u = uv.getX(i);
+    const v = uv.getY(i);
+    if (u < minU) minU = u;
+    if (u > maxU) maxU = u;
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+  }
+  const span = Math.max(maxU - minU, maxV - minV);
+  geometry.userData.marbleUvSpan = span;
+  return span;
 }
 
 function bindShader(material, uniforms, projectFeathers) {
@@ -654,12 +808,33 @@ function bindShader(material, uniforms, projectFeathers) {
     shader.uniforms.uMarbleTime = uniforms.uMarbleTime;
     shader.uniforms.uMarbleStill = uniforms.uMarbleStill;
     shader.uniforms.uMarblePhase = uniforms.uMarblePhase;
-    shader.fragmentShader = injectFragment(shader.fragmentShader);
+    if (!projectFeathers) {
+      shader.uniforms.uProject = uniforms.uProject;
+      shader.uniforms.uMarbleMatrix = uniforms.uMarbleMatrix;
+      shader.uniforms.uMarbleNormalMatrix = uniforms.uMarbleNormalMatrix;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\nvarying vec3 vMarblePos;\nvarying vec3 vMarbleNormal;\n`)
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>\nvMarblePos = position;\nvMarbleNormal = normal;\n`,
+        );
+    }
+    shader.fragmentShader = injectFragment(shader.fragmentShader, !projectFeathers);
     if (projectFeathers) {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v2' : 'marble-body-v2');
+  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v3' : 'marble-body-v3');
+  if (!projectFeathers) {
+    material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
+      const project = uvSpan(geometry) > 0.75 ? 1 : 0;
+      uniforms.uProject.value = project;
+      if (project) {
+        marbleMatrix(object, uniforms.uMarbleMatrix.value);
+        uniforms.uMarbleNormalMatrix.value.getNormalMatrix(uniforms.uMarbleMatrix.value);
+      }
+    };
+  }
 }
 
 function applySurface(material, textures) {
@@ -687,11 +862,21 @@ function applySurface(material, textures) {
 
 /**
  * Polished Carrara body and wing materials.
- * `setForm('radiant' | 'still', t)` blends with t in 0..1 toward that form.
- * `update(time)` drives the slow pulse along the gold veins.
- * Hair clones of `body` keep the same shader and form uniforms.
+ *
+ * setForm(form, t)
+ *   form — 'radiant' or 'still'
+ *   t    — eased progress toward that form, 0 → 1
+ *   stillWeight = form === 'still' ? t : 1 - t
+ *
+ * update(time, dt) drives the vein pulse. dispose() releases the
+ * shared maps and every material cloned from body.
+ * Full-span UVs are projected in the figure's space so a lathe seam
+ * or a pinched neck does not show. Partial UV windows keep their UVs.
  */
 export function createMarble(renderer) {
+  SIZE = pickSize(renderer);
+  LOW = Math.max(128, SIZE >> 1);
+  UNIT = SIZE / 1024;
   const rand = mulberry32(0x5a17);
   const painted = paintStone(rand);
   const maps = buildCrackle(rand, painted.ctx);
@@ -711,17 +896,19 @@ export function createMarble(renderer) {
   textures.phaseMap.minFilter = THREE.LinearFilter;
   textures.phaseMap.magFilter = THREE.LinearFilter;
 
-  const repeat = new THREE.Vector2(1.15, 1.5);
-  for (const [name, tex] of Object.entries(textures)) {
-    // Phase is sampled with the emissive UV, which already includes this repeat.
-    if (name === 'phaseMap') continue;
-    tex.repeat.copy(repeat);
+  // Integer repeat so a 0–1 unwrap meets itself. The body projects in
+  // figure space instead, and ignores this repeat.
+  for (const tex of Object.values(textures)) {
+    tex.repeat.set(1, 1);
   }
 
   const uniforms = {
     uMarbleTime: { value: 0 },
     uMarbleStill: { value: 0 },
     uMarblePhase: { value: textures.phaseMap },
+    uProject: { value: 0 },
+    uMarbleMatrix: { value: new THREE.Matrix4() },
+    uMarbleNormalMatrix: { value: new THREE.Matrix3() },
   };
 
   const warmSheen = new THREE.Color(0xfff4ea);
@@ -749,10 +936,29 @@ export function createMarble(renderer) {
     const cloned = protoClone.call(this);
     cloned.onBeforeCompile = this.onBeforeCompile;
     cloned.customProgramCacheKey = this.customProgramCacheKey;
+    cloned.onBeforeRender = this.onBeforeRender;
     cloned.clone = this.clone;
     materials.push(cloned);
     return cloned;
   };
+
+  let disposed = false;
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    for (const material of materials) {
+      material.map = null;
+      material.roughnessMap = null;
+      material.metalnessMap = null;
+      material.normalMap = null;
+      material.emissiveMap = null;
+      material.dispose();
+    }
+    for (const tex of Object.values(textures)) {
+      tex.dispose();
+      tex.image = null;
+    }
+  }
 
   function applyStill(still) {
     uniforms.uMarbleStill.value = still;
@@ -767,12 +973,14 @@ export function createMarble(renderer) {
     wing,
     textures,
     update(time = 0) {
-      uniforms.uMarbleTime.value = time;
+      if (Number.isFinite(time)) uniforms.uMarbleTime.value = time;
     },
     setForm(form, t = 1) {
-      const k = Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 1;
+      const k = Number.isFinite(Number(t)) ? Math.min(1, Math.max(0, Number(t))) : 1;
       if (form === 'still') applyStill(k);
       else if (form === 'radiant') applyStill(1 - k);
     },
+    dispose,
+    size: SIZE,
   };
 }

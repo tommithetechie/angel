@@ -22,14 +22,20 @@ const reflectorShader = {
     uStill: { value: 0 },
     uDeep: { value: new THREE.Color(0x07060a) },
     uShallow: { value: new THREE.Color(0x100e12) },
-    uReflFacing: { value: 0.74 },
-    uReflGrazing: { value: 0.9 },
+    uReflFacing: { value: 0.62 },
+    uReflGrazing: { value: 0.94 },
     uDistort: { value: 0.001 },
     uBlur: { value: 0.0012 },
     uMoonDir: { value: new THREE.Vector3(0.4, 0.8, -0.4) },
     uMoonStrength: { value: 0 },
     uFogColor: { value: new THREE.Color(0x0c0b10) },
     uFogDensity: { value: 0.02 },
+    uRipple: { value: null },
+    uRippleAmt: { value: 0.04 },
+    uDetail: { value: 1 },
+    uContact: { value: null },
+    uContactMatrix: { value: new THREE.Matrix4() },
+    uContactStrength: { value: 0.55 },
   },
   vertexShader: /* glsl */ `
     uniform mat4 textureMatrix;
@@ -49,6 +55,9 @@ const reflectorShader = {
   `,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
+    uniform sampler2D uRipple;
+    uniform sampler2D uContact;
+    uniform mat4 uContactMatrix;
     uniform float uTime;
     uniform float uStill;
     uniform vec3 uDeep;
@@ -57,6 +66,9 @@ const reflectorShader = {
     uniform float uReflGrazing;
     uniform float uDistort;
     uniform float uBlur;
+    uniform float uRippleAmt;
+    uniform float uDetail;
+    uniform float uContactStrength;
     uniform vec3 uMoonDir;
     uniform float uMoonStrength;
     uniform vec3 uFogColor;
@@ -69,46 +81,97 @@ const reflectorShader = {
       return texture2DProj(tDiffuse, coord).rgb;
     }
 
+    vec3 rippleAt(vec2 uv) {
+      vec3 n = texture2D(uRipple, uv).rgb * 2.0 - 1.0;
+      return vec3(n.r, n.b, n.g);
+    }
+
     void main() {
       float e = 0.22;
       float h0 = waveHeight(vWorld.xz);
       float hx = waveHeight(vWorld.xz + vec2(e, 0.0));
       float hz = waveHeight(vWorld.xz + vec2(0.0, e));
-      float slope = mix(0.15, 2.4, uStill);
-      vec3 normal = normalize(vec3((h0 - hx) * slope, 1.0, (h0 - hz) * slope));
+      float slope = mix(0.12, 1.7, uStill);
+      vec3 waveN = normalize(vec3((h0 - hx) * slope, 1.0, (h0 - hz) * slope));
+
+      vec2 flowA = vWorld.xz * 0.38 + vec2(uTime * 0.017, uTime * 0.011);
+      vec2 flowB = vWorld.xz * 0.73 + vec2(-uTime * 0.013, uTime * 0.019);
+      vec3 rip = rippleAt(flowA);
+      if (uDetail > 0.5) {
+        vec3 ripB = rippleAt(flowB);
+        rip = normalize(rip + ripB);
+      }
+      float ripAmt = uRippleAmt;
+      vec3 normal = normalize(vec3(waveN.x + rip.x * ripAmt, 1.0, waveN.z + rip.z * ripAmt));
 
       vec4 coord = vCoord;
       coord.xy += normal.xz * uDistort * coord.w;
-      float blur = uBlur * coord.w;
+
+      float radial = length(vWorld.xz);
+      float viewDist = length(cameraPosition - vWorld);
+      float falloff = 1.0 + viewDist * mix(0.01, 0.038, uStill) + radial * mix(0.006, 0.02, uStill);
+      float under = exp(-radial * radial * 0.11);
+      float blur = uBlur * falloff * coord.w * mix(1.0, mix(0.4, 0.72, uStill), under);
+
+      float ang = fract(sin(dot(vWorld.xz, vec2(127.1, 311.7))) * 43758.5453) * 6.2831853;
+      float ca = cos(ang);
+      float sa = sin(ang);
+      vec2 rot1 = vec2(ca, sa) * blur;
+      vec2 rot2 = vec2(-sa, ca) * blur;
       vec3 refl = sampleRefl(coord);
-      refl += sampleRefl(coord + vec4(blur, 0.0, 0.0, 0.0));
-      refl += sampleRefl(coord + vec4(-blur, 0.0, 0.0, 0.0));
-      refl += sampleRefl(coord + vec4(0.0, blur, 0.0, 0.0));
-      refl += sampleRefl(coord + vec4(0.0, -blur, 0.0, 0.0));
-      refl *= 0.2;
-      refl *= mix(0.95, 0.64, uStill);
+      refl += sampleRefl(coord + vec4(rot1, 0.0, 0.0));
+      refl += sampleRefl(coord + vec4(-rot1, 0.0, 0.0));
+      refl += sampleRefl(coord + vec4(rot2, 0.0, 0.0));
+      refl += sampleRefl(coord + vec4(-rot2, 0.0, 0.0));
+      float samples = 5.0;
+      if (uDetail > 0.5) {
+        vec2 diag = (rot1 + rot2) * 0.65;
+        refl += sampleRefl(coord + vec4(diag, 0.0, 0.0));
+        refl += sampleRefl(coord + vec4(-diag, 0.0, 0.0));
+        refl += sampleRefl(coord + vec4(diag.y, -diag.x, 0.0, 0.0));
+        refl += sampleRefl(coord + vec4(-diag.y, diag.x, 0.0, 0.0));
+        samples = 9.0;
+      }
+      refl /= samples;
+      refl *= mix(0.98, 0.78, uStill);
 
       vec3 viewDir = normalize(cameraPosition - vWorld);
       float ndv = clamp(dot(normal, viewDir), 0.0, 1.0);
-      float fresnel = pow(1.0 - ndv, 4.0);
-      float facing = smoothstep(0.0, 0.65, ndv);
+      float schlick = pow(1.0 - ndv, 5.0);
+      float fresnel = mix(uReflFacing, uReflGrazing, schlick);
+      float facing = smoothstep(0.0, 0.7, ndv);
+      fresnel *= mix(1.0, 0.78, facing * uStill);
+      float distFade = smoothstep(40.0, 9.0, radial);
+      fresnel *= mix(0.42, 1.0, distFade);
+      fresnel = clamp(fresnel, 0.0, 1.0);
+
       vec3 water = mix(uShallow, uDeep, facing);
-      float reflAmt = mix(uReflFacing, uReflGrazing, fresnel);
-      vec3 col = mix(water, refl, reflAmt);
+      float absorb = mix(0.22, 1.25, facing);
+      vec3 beer = exp(-vec3(1.25, 0.38, 0.18) * absorb * uStill);
+      vec3 reflected = refl * mix(vec3(1.0), beer, 0.8);
+      vec3 col = mix(water * mix(vec3(1.0), beer, 0.45), reflected, fresnel);
 
       vec3 moonDir = normalize(uMoonDir);
       vec3 halfDir = normalize(moonDir + viewDir);
-      float spec = pow(max(dot(normal, halfDir), 0.0), mix(28.0, 70.0, 1.0 - uStill));
-      float broad = pow(max(dot(normal, halfDir), 0.0), 8.0);
-      col += vec3(0.72, 0.82, 1.0) * (spec * 1.15 + broad * 0.07) * uMoonStrength;
+      float broad = pow(max(dot(normal, halfDir), 0.0), mix(22.0, 70.0, uStill));
+      vec3 micro = normalize(mix(vec3(0.0, 1.0, 0.0), rip, mix(0.2, 1.0, uStill)));
+      float glint = pow(max(dot(micro, halfDir), 0.0), 520.0);
+      float crest = smoothstep(0.58, 0.94, micro.y);
+      col += vec3(0.84, 0.91, 1.0) * uMoonStrength * (broad * 0.32 + glint * crest * 2.8);
 
-      float contact = exp(-dot(vWorld.xz, vWorld.xz) * 0.28);
-      col *= mix(1.0, 0.78, contact * mix(0.5, 0.18, uStill));
+      vec4 cproj = uContactMatrix * vec4(vWorld, 1.0);
+      vec2 suv = cproj.xy / max(cproj.w, 1.0e-4);
+      float inside = step(0.0, suv.x) * step(suv.x, 1.0) * step(0.0, suv.y) * step(suv.y, 1.0);
+      float edge = smoothstep(0.0, 0.07, suv.x) * smoothstep(1.0, 0.93, suv.x);
+      edge *= smoothstep(0.0, 0.07, suv.y) * smoothstep(1.0, 0.93, suv.y);
+      float shade = texture2D(uContact, suv).r * inside * edge;
+      float ao = smoothstep(0.02, 0.42, shade);
+      col *= mix(1.0, mix(0.46, 0.68, uStill), ao * uContactStrength);
 
       float dist = length(cameraPosition - vWorld);
       float fogF = 1.0 - exp(-uFogDensity * uFogDensity * dist * dist);
-      float edge = smoothstep(36.0, 14.0, length(vWorld.xz));
-      col = mix(uFogColor, col, edge * (1.0 - fogF));
+      float horizon = smoothstep(36.0, 14.0, radial);
+      col = mix(uFogColor, col, horizon * (1.0 - fogF));
 
       gl_FragColor = vec4(col, 1.0);
     }
@@ -158,15 +221,108 @@ function createSky() {
   return sky;
 }
 
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeNoise(rand, period) {
+  const stride = period + 1;
+  const g = new Float32Array(stride * stride);
+  for (let y = 0; y < period; y++) {
+    for (let x = 0; x < period; x++) g[y * stride + x] = rand();
+  }
+  for (let i = 0; i < period; i++) {
+    g[i * stride + period] = g[i * stride];
+    g[period * stride + i] = g[i];
+  }
+  g[period * stride + period] = g[0];
+  return (u, v) => {
+    let x = u * period;
+    let y = v * period;
+    x -= Math.floor(x / period) * period;
+    y -= Math.floor(y / period) * period;
+    if (x < 0) x += period;
+    if (y < 0) y += period;
+    const x0 = x | 0;
+    const y0 = y | 0;
+    const tx = x - x0;
+    const ty = y - y0;
+    const sx = tx * tx * (3 - 2 * tx);
+    const sy = ty * ty * (3 - 2 * ty);
+    const i00 = g[y0 * stride + x0];
+    const i10 = g[y0 * stride + x0 + 1];
+    const i01 = g[(y0 + 1) * stride + x0];
+    const i11 = g[(y0 + 1) * stride + x0 + 1];
+    const a = i00 + (i10 - i00) * sx;
+    const b = i01 + (i11 - i01) * sx;
+    return a + (b - a) * sy;
+  };
+}
+
+function createRippleNormal(size) {
+  const rand = mulberry32(0xc0a1);
+  const coarse = makeNoise(rand, 6);
+  const fine = makeNoise(rand, 18);
+  const height = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      height[y * size + x] = coarse(u, v) * 0.62 + fine(u, v) * 0.38;
+    }
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const image = canvas.getContext('2d').createImageData(size, size);
+  const data = image.data;
+  const at = (x, y) => height[((y + size) % size) * size + ((x + size) % size)];
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = at(x - 1, y) - at(x + 1, y);
+      const dy = at(x, y - 1) - at(x, y + 1);
+      let nx = dx * 2.6;
+      let nz = dy * 2.6;
+      let ny = 1;
+      const len = Math.hypot(nx, ny, nz);
+      nx /= len;
+      ny /= len;
+      nz /= len;
+      const o = (y * size + x) * 4;
+      data[o] = (nx * 0.5 + 0.5) * 255;
+      data[o + 1] = (nz * 0.5 + 0.5) * 255;
+      data[o + 2] = (ny * 0.5 + 0.5) * 255;
+      data[o + 3] = 255;
+    }
+  }
+  canvas.getContext('2d').putImageData(image, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /**
  * Dark mirror in the radiant form, calm rippled water in the still form.
  * One reflector, retinted by setForm — a second reflection pass would
  * double the cost of an already reflected scene.
  */
-export function createFloor(scene, quality) {
-  const size = quality.low ? 512 : 1024;
-  const segments = quality.low ? 24 : 40;
+export function createFloor(scene, quality, contact) {
+  const low = Boolean(quality?.low);
+  const size = low ? 512 : 1024;
+  const segments = low ? 24 : 48;
   const geometry = new THREE.PlaneGeometry(96, 96, segments, segments);
+  const ripple = createRippleNormal(low ? 128 : 256);
 
   const mirror = new Reflector(geometry, {
     textureWidth: size,
@@ -188,11 +344,17 @@ export function createFloor(scene, quality) {
 
   const sky = createSky();
   const uniforms = mirror.material.uniforms;
+  uniforms.uRipple.value = ripple;
+  uniforms.uDetail.value = low ? 0 : 1;
+  if (contact) {
+    uniforms.uContact.value = contact.texture;
+    uniforms.uContactMatrix.value = contact.matrix;
+  }
 
   const deepRadiant = new THREE.Color(0x07060a);
-  const deepStill = new THREE.Color(0x0d4450);
+  const deepStill = new THREE.Color(0x0a3c48);
   const shallowRadiant = new THREE.Color(0x121016);
-  const shallowStill = new THREE.Color(0x2f8f98);
+  const shallowStill = new THREE.Color(0x2a8d98);
   const glowRadiant = new THREE.Color(0xc4a36a);
   const glowStill = new THREE.Color(0xb7e4e2);
 
@@ -203,7 +365,8 @@ export function createFloor(scene, quality) {
   const moonDir = new THREE.Vector3(5.4, 5.1, -7.6);
 
   function stillOf(form, t) {
-    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    const raw = Number(t);
+    const clamped = Number.isFinite(raw) ? THREE.MathUtils.clamp(raw, 0, 1) : 1;
     return form === 'still' ? clamped : 1 - clamped;
   }
 
@@ -221,27 +384,34 @@ export function createFloor(scene, quality) {
     setMoonDirection(position) {
       moonDir.copy(position);
     },
+    setDetail(isLow) {
+      uniforms.uDetail.value = isLow ? 0 : 1;
+    },
     /**
      * form is the destination ('radiant' | 'still').
      * t is progress toward that destination, 0 → 1.
      */
     setForm(form, t) {
+      if (form !== 'still' && form !== 'radiant') return;
       const still = stillOf(form, t);
       uniforms.uStill.value = still;
       sky.material.uniforms.uStill.value = still;
       uniforms.uDeep.value.copy(deepRadiant).lerp(deepStill, still);
       uniforms.uShallow.value.copy(shallowRadiant).lerp(shallowStill, still);
       sky.material.uniforms.uGlow.value.copy(glowRadiant).lerp(glowStill, still);
-      uniforms.uReflFacing.value = THREE.MathUtils.lerp(0.9, 0.28, still);
-      uniforms.uReflGrazing.value = THREE.MathUtils.lerp(0.97, 0.7, still);
-      uniforms.uDistort.value = THREE.MathUtils.lerp(0.0004, 0.046, still);
-      uniforms.uDisplace.value = THREE.MathUtils.lerp(0.0, 0.028, still);
-      uniforms.uBlur.value = THREE.MathUtils.lerp(0.0008, 0.0065, still);
-      uniforms.uMoonStrength.value = THREE.MathUtils.lerp(0.0, 1.35, still);
+      uniforms.uReflFacing.value = THREE.MathUtils.lerp(0.58, 0.18, still);
+      uniforms.uReflGrazing.value = THREE.MathUtils.lerp(0.96, 0.84, still);
+      uniforms.uDistort.value = THREE.MathUtils.lerp(0.00035, 0.05, still);
+      uniforms.uDisplace.value = THREE.MathUtils.lerp(0.0, 0.032, still);
+      uniforms.uBlur.value = THREE.MathUtils.lerp(0.00055, 0.008, still);
+      uniforms.uRippleAmt.value = THREE.MathUtils.lerp(0.04, 1.08, still);
+      uniforms.uMoonStrength.value = THREE.MathUtils.lerp(0.05, 1.65, still);
+      uniforms.uContactStrength.value = THREE.MathUtils.lerp(0.85, 0.55, still);
     },
     dispose() {
       mirror.dispose();
       geometry.dispose();
+      ripple.dispose();
       sky.geometry.dispose();
       sky.material.dispose();
       group.removeFromParent();

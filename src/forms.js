@@ -20,23 +20,23 @@ const RADIANT = {
   background: new THREE.Color(0x040308),
   fog: new THREE.Color(0x09080d),
   fogDensity: 0.012,
-  exposure: 0.74,
-  envIntensity: 0.78,
-  bloomStrength: 0.34,
-  bloomThreshold: 1.62,
-  bloomRadius: 0.58,
+  exposure: 1.05,
+  envIntensity: 1.05,
+  bloomStrength: 0.24,
+  bloomThreshold: 0.96,
+  bloomRadius: 0.48,
   bloomTint: new THREE.Color(0xffd7a2),
 };
 
 const STILL = {
   background: new THREE.Color(0x07141c),
   fog: new THREE.Color(0x1a5560),
-  fogDensity: 0.024,
-  exposure: 0.78,
-  envIntensity: 0.55,
-  bloomStrength: 0.32,
-  bloomThreshold: 1.18,
-  bloomRadius: 0.7,
+  fogDensity: 0.02,
+  exposure: 0.96,
+  envIntensity: 0.78,
+  bloomStrength: 0.2,
+  bloomThreshold: 0.88,
+  bloomRadius: 0.58,
   bloomTint: new THREE.Color(0xd5e8ff),
 };
 
@@ -147,9 +147,7 @@ export function createForms({
     moon.visible = weight > 0.001;
 
     if (grade) grade.uniforms.uStill.value = weight;
-    // Floor, marble, and scene modules all share this contract.
-    // Marble's setForm lands in #3; until then the method is absent.
-    // Angel, rings, and particles may gain setForm in later PRs.
+    // Floor, marble, environment, and the other modules share setForm(form, t).
     callSetForm(floor, form, t);
     callSetForm(marble, form, t);
     for (const mod of modules) callSetForm(mod, form, t);

@@ -368,9 +368,10 @@ function buildCrackle(rand, stone) {
       r = r * (1 - ink) + 14 * ink;
       g = g * (1 - ink) + 15 * ink;
       b = b * (1 - ink) + 18 * ink;
-      const gr = 196 + goldCore * 59;
-      const gg = 132 + goldCore * 96;
-      const gb = 48 + goldCore * 92;
+      // Stay inside a gold reflectance. White cores read as chrome, not metal.
+      const gr = 176 + goldCore * 58;
+      const gg = 108 + goldCore * 72;
+      const gb = 32 + goldCore * 42;
       r = r * (1 - gold) + gr * gold;
       g = g * (1 - gold) + gg * gold;
       b = b * (1 - gold) + gb * gold;
@@ -381,10 +382,10 @@ function buildCrackle(rand, stone) {
       color[o + 3] = 255;
 
       const grain = hash01(x, y);
-      let roughV = 42 + grain * 18 + softVein * 28;
-      roughV = mix(roughV, 168, Math.min(1, crack * (1 - gold)));
-      roughV = mix(roughV, 36 + grain * 14, gold);
-      roughV = mix(roughV, 24, goldCore);
+      let roughV = 38 + grain * 16 + softVein * 22;
+      roughV = mix(roughV, 176, Math.min(1, crack * (1 - gold)));
+      roughV = mix(roughV, 48 + grain * 10, gold);
+      roughV = mix(roughV, 30, goldCore);
       const rb = clampByte(roughV);
       rough[o] = rough[o + 1] = rough[o + 2] = rb;
       rough[o + 3] = 255;
@@ -431,9 +432,9 @@ function buildCrackle(rand, stone) {
 function layHeroVeins(rand, colorCtx, maps) {
   const heroes = makePaths(rand, 8, px(58), 0.72, 0.28);
   strokeWrapped(colorCtx, heroes, 'rgba(8,8,10,0.95)', px(8));
-  strokeWrapped(colorCtx, heroes, '#7a4e12', px(4.6));
-  strokeWrapped(colorCtx, heroes, '#e7b44a', px(2.5));
-  strokeWrapped(colorCtx, heroes, '#ffe6b0', px(1.05));
+  strokeWrapped(colorCtx, heroes, '#8a5814', px(4.6));
+  strokeWrapped(colorCtx, heroes, '#d9a23a', px(2.5));
+  strokeWrapped(colorCtx, heroes, '#f0c15a', px(1.05));
 
   const mask = document.createElement('canvas');
   mask.width = mask.height = SIZE;
@@ -679,21 +680,27 @@ const BODY_PHASE = /* glsl */ `
 
 const SHADER_FORM = /* glsl */ `
 {
+  float goldMix = smoothstep(0.22, 0.82, metalnessFactor);
+  vec3 goldF0 = vec3(1.0, 0.716, 0.291);
+  diffuseColor.rgb = mix(diffuseColor.rgb, goldF0, goldMix * 0.82);
+  roughnessFactor = mix(roughnessFactor, min(roughnessFactor, 0.2), goldMix);
   vec3 albedo = diffuseColor.rgb;
   float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
   vec3 pale = mix(albedo, vec3(luma), 0.42);
   pale *= vec3(0.90, 0.96, 1.08);
   pale += vec3(0.03, 0.045, 0.08);
   pale = mix(pale, vec3(0.78, 0.83, 0.90), smoothstep(0.55, 0.06, luma) * 0.62);
-  diffuseColor.rgb = mix(albedo, clamp(pale, 0.0, 1.0), uMarbleStill);
-  vec3 paleGold = mix(diffuseColor.rgb, vec3(0.55, 0.60, 0.58), 0.82);
-  diffuseColor.rgb = mix(diffuseColor.rgb, paleGold, uMarbleStill * smoothstep(0.15, 0.65, metalnessFactor));
+  diffuseColor.rgb = mix(albedo, clamp(pale, 0.0, 1.0), uMarbleStill * (1.0 - goldMix));
+  vec3 stillGold = vec3(0.82, 0.76, 0.58);
+  diffuseColor.rgb = mix(diffuseColor.rgb, stillGold, uMarbleStill * goldMix * 0.42);
 }
 `;
 
 const SHADER_SSS = /* glsl */ `
 {
   float stoneMask = 1.0 - metalnessFactor;
+  float cavity = smoothstep(0.28, 0.92, roughnessFactor);
+  totalDiffuse *= mix(1.0, 0.55, cavity * stoneMask);
   float ndv = saturate(dot(normalize(normal), normalize(vViewPosition)));
   float rim = pow(1.0 - ndv, 2.6);
   vec3 milk = mix(vec3(1.0, 0.93, 0.84), vec3(0.80, 0.88, 1.0), uMarbleStill);
@@ -824,7 +831,7 @@ function bindShader(material, uniforms, projectFeathers) {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v4' : 'marble-body-v4');
+  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v5' : 'marble-body-v5');
   if (!projectFeathers) {
     material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
       const project = uvSpan(geometry) > 0.75 ? 1 : 0;
@@ -845,18 +852,25 @@ function applySurface(material, textures) {
   material.emissiveMap = textures.emissiveMap;
   material.color.set(0xffffff);
   material.emissive.set(0xffffff);
-  material.emissiveIntensity = 2.45;
   material.roughness = 1;
   material.metalness = 1;
-  material.normalScale.set(0.92, 0.92);
-  material.clearcoat = 0.85;
-  material.clearcoatRoughness = 0.16;
-  material.envMapIntensity = 0.58;
-  material.ior = 1.54;
+  material.normalScale.set(1.12, 1.12);
+  material.clearcoat = 1;
+  material.clearcoatRoughness = 0.05;
+  material.envMapIntensity = 1.2;
+  material.ior = 1.5;
   material.specularIntensity = 1;
-  material.sheen = 0.24;
+  material.specularColor.set(0xfff6ee);
+  material.sheen = 0.05;
+  material.sheenRoughness = 0.62;
   material.sheenColor.set(0xfff4ea);
-  material.sheenRoughness = 0.78;
+  material.emissiveIntensity = 1.15;
+  material.userData.env0 = 1.2;
+  material.userData.env1 = 0.92;
+  material.userData.em0 = 1.15;
+  material.userData.em1 = 0.22;
+  material.userData.sheen = 0.05;
+  material.userData.coat = 0.045;
   material.dithering = true;
 }
 
@@ -924,9 +938,16 @@ export function createMarble(renderer) {
     vertexColors: true,
   });
   applySurface(wing, textures);
-  wing.envMapIntensity = 0.42;
-  wing.clearcoat = 0.62;
-  wing.emissiveIntensity = 2.05;
+  wing.clearcoat = 0.42;
+  wing.envMapIntensity = 0.62;
+  wing.emissiveIntensity = 0.7;
+  wing.sheen = 0.18;
+  wing.userData.env0 = 0.62;
+  wing.userData.env1 = 0.45;
+  wing.userData.em0 = 0.7;
+  wing.userData.em1 = 0.12;
+  wing.userData.sheen = 0.18;
+  wing.userData.coat = 0.12;
   bindShader(wing, uniforms, true);
 
   materials.push(body, wing);
@@ -963,8 +984,12 @@ export function createMarble(renderer) {
   function applyStill(still) {
     uniforms.uMarbleStill.value = still;
     for (const material of materials) {
+      const data = material.userData;
       material.sheenColor.copy(warmSheen).lerp(coolSheen, still);
-      material.clearcoatRoughness = 0.055 + still * 0.1;
+      material.envMapIntensity = THREE.MathUtils.lerp(data.env0 ?? 1.2, data.env1 ?? 0.92, still);
+      material.emissiveIntensity = THREE.MathUtils.lerp(data.em0 ?? 1.15, data.em1 ?? 0.22, still);
+      material.clearcoatRoughness = (data.coat ?? 0.045) + still * 0.08;
+      material.sheen = data.sheen ?? 0.05;
     }
   }
 

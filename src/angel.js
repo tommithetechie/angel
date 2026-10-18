@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * Virgo's body, with the scene's six feathered wings.
@@ -227,13 +228,13 @@ function makeWingSpecs(light) {
         width: 1.02,
       },
       closed: {
-        points: [v3(0, 0, 0), v3(0.05 * s, -0.28, -0.06), v3(0.03 * s, -0.58, -0.04), v3(0.01 * s, -0.92, -0.02)],
-        hints: [v3(0.08 * s, -0.98, -0.04), v3(0.05 * s, -1, -0.02), v3(0.02 * s, -1, 0)],
-        fan0: 0.05,
-        fan1: 0.08,
-        out: 0.22,
-        lenMul: 0.48,
-        width: 0.72,
+        points: [v3(0, 0, 0), v3(0.16 * s, 0.28, -0.1), v3(0.05 * s, 0.72, -0.14), v3(-0.06 * s, 1.05, -0.08)],
+        hints: [v3(0.25 * s, 0.92, -0.12), v3(0.08 * s, 0.98, -0.1), v3(-0.05 * s, 0.99, -0.06)],
+        fan0: 0.16,
+        fan1: 0.22,
+        out: 0.55,
+        lenMul: 0.78,
+        width: 0.85,
       },
     });
     specs.push({
@@ -255,13 +256,13 @@ function makeWingSpecs(light) {
         width: 0.88,
       },
       closed: {
-        points: [v3(0, 0, 0), v3(0.08 * s, -0.32, -0.08), v3(0.05 * s, -0.68, -0.05), v3(0.02 * s, -1.05, -0.02)],
-        hints: [v3(0.1 * s, -0.96, -0.05), v3(0.06 * s, -1, -0.03), v3(0.02 * s, -1, 0)],
-        fan0: 0.06,
-        fan1: 0.1,
-        out: 0.24,
-        lenMul: 0.5,
-        width: 0.7,
+        points: [v3(0, 0, 0), v3(0.22 * s, -0.02, -0.12), v3(0.32 * s, -0.28, -0.1), v3(0.18 * s, -0.55, -0.06)],
+        hints: [v3(0.35 * s, -0.9, -0.14), v3(0.45 * s, -0.82, -0.1), v3(0.2 * s, -0.95, -0.06)],
+        fan0: 0.2,
+        fan1: 0.28,
+        out: 0.5,
+        lenMul: 0.7,
+        width: 0.8,
       },
     });
     specs.push({
@@ -284,13 +285,13 @@ function makeWingSpecs(light) {
         width: 1.05,
       },
       closed: {
-        points: [v3(0, 0, 0), v3(0.05 * s, -0.22, -0.05), v3(0.03 * s, -0.42, -0.03), v3(0.01 * s, -0.62, -0.01)],
-        hints: [v3(0.12 * s, -0.97, -0.04), v3(0.06 * s, -1, -0.02), v3(0, -1, 0)],
-        fan0: 0.1,
-        fan1: 0.06,
-        out: 0.2,
-        lenMul: 0.55,
-        width: 0.75,
+        points: [v3(0, 0, 0), v3(0.12 * s, -0.4, -0.1), v3(0.1 * s, -0.95, -0.08), v3(0.02 * s, -1.45, -0.04)],
+        hints: [v3(0.28 * s, -0.92, -0.1), v3(0.18 * s, -0.96, -0.06), v3(0.04 * s, -1, -0.02)],
+        fan0: 0.28,
+        fan1: 0.12,
+        out: 0.48,
+        lenMul: 0.85,
+        width: 0.9,
       },
     });
   }
@@ -358,21 +359,20 @@ function gownRadius(y) {
 
 function isWing(x, y, z) {
   const dx = x - BODY_X;
-  // Raised wing beside and above the head. The head itself stays left of x = 0.36.
-  if (y > 0.47 && x > 0.36) return true;
-  if (y > 0.6) return true;
+  // Raised wing beside and above the head. The head itself stays left of x = 0.34.
+  if (y > 0.46 && x > 0.34) return true;
+  if (y > 0.58) return true;
   const radius = gownRadius(y);
-  if (Math.abs(dx) <= radius && z < 0.18) return false;
-  // Forearms, hands, staff, and wheat sit ahead of the ribs.
-  if (y > -0.12 && y < 0.46 && z < -0.16 && Math.abs(dx) < 0.52) return false;
-  // Upper arms lie against the gown.
-  if (y > 0.05 && y < 0.46 && z < -0.02 && Math.abs(dx) < radius + 0.1) return false;
+  // The rear curtain and the forward-swept feathers sit outside the gown.
+  if (z > 0.06 && Math.abs(dx) > radius * 0.72) return true;
+  if (Math.abs(dx) <= radius && z < 0.12) return false;
+  // Hands, wheat, and staff: a short reach in front of the ribs, not the wing sheet.
+  if (y > 0 && y < 0.42 && z < -0.2 && Math.abs(dx) < radius + 0.16) return false;
   return true;
 }
 
 function takeTriangles(src, keep) {
   const pos = src.attributes.position;
-  const nrm = src.attributes.normal;
   const index = src.index;
   if (!index) return null;
   const kept = [];
@@ -388,7 +388,6 @@ function takeTriangles(src, keep) {
   if (kept.length === 0) return null;
   const map = new Map();
   const positions = [];
-  const normals = [];
   const out = [];
   for (const vi of kept) {
     let ni = map.get(vi);
@@ -396,30 +395,77 @@ function takeTriangles(src, keep) {
       ni = positions.length / 3;
       map.set(vi, ni);
       positions.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
-      if (nrm) normals.push(nrm.getX(vi), nrm.getY(vi), nrm.getZ(vi));
     }
     out.push(ni);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  if (nrm) geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  else geo.computeVertexNormals();
-  const uvs = new Float32Array((positions.length / 3) * 2);
-  for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i];
-    const y = positions[i + 1];
-    const z = positions[i + 2];
-    const vi = i / 3;
-    uvs[vi * 2] = Math.atan2(x, z) / (Math.PI * 2) + 0.5;
-    uvs[vi * 2 + 1] = y * 0.4 + 0.5;
-  }
-  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setIndex(out);
+  // Decimation split the shell and left normals that point off the faces.
+  // Weld, ease the chatter, then shade from the smoothed surface.
+  const welded = mergeVertices(geo, 1e-4);
+  geo.dispose();
+  softenSurface(welded, 4);
+  welded.computeVertexNormals();
+  const count = welded.attributes.position.count;
+  const uvs = new Float32Array(count * 2);
+  const posAttr = welded.attributes.position;
+  for (let i = 0; i < count; i++) {
+    uvs[i * 2] = Math.atan2(posAttr.getX(i), posAttr.getZ(i)) / (Math.PI * 2) + 0.5;
+    uvs[i * 2 + 1] = posAttr.getY(i) * 0.4 + 0.5;
+  }
+  welded.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   // Full-span flag forces the marble shader onto the figure, not the GLB atlas.
-  geo.userData.marbleUvSpan = 1;
-  geo.computeBoundingBox();
-  geo.computeBoundingSphere();
-  return geo;
+  welded.userData.marbleUvSpan = 1;
+  welded.computeBoundingBox();
+  welded.computeBoundingSphere();
+  return welded;
+}
+
+// Taubin steps take the high-frequency crumple out of the decimated shell
+// without shrinking the figure the way plain smoothing does.
+function softenSurface(geo, iterations) {
+  const pos = geo.attributes.position;
+  const index = geo.index.array;
+  const count = pos.count;
+  const neighbors = Array.from({ length: count }, () => []);
+  const seen = Array.from({ length: count }, () => new Set());
+  for (let i = 0; i < index.length; i += 3) {
+    const tri = [index[i], index[i + 1], index[i + 2]];
+    for (let a = 0; a < 3; a++) {
+      for (let b = 0; b < 3; b++) {
+        if (a === b || seen[tri[a]].has(tri[b])) continue;
+        seen[tri[a]].add(tri[b]);
+        neighbors[tri[a]].push(tri[b]);
+      }
+    }
+  }
+  const src = new Float32Array(pos.array);
+  const dst = new Float32Array(src.length);
+  const pass = (factor) => {
+    for (let i = 0; i < count; i++) {
+      const ring = neighbors[i];
+      let x = 0;
+      let y = 0;
+      let z = 0;
+      for (const j of ring) {
+        x += src[j * 3];
+        y += src[j * 3 + 1];
+        z += src[j * 3 + 2];
+      }
+      const n = ring.length || 1;
+      dst[i * 3] = src[i * 3] + factor * (x / n - src[i * 3]);
+      dst[i * 3 + 1] = src[i * 3 + 1] + factor * (y / n - src[i * 3 + 1]);
+      dst[i * 3 + 2] = src[i * 3 + 2] + factor * (z / n - src[i * 3 + 2]);
+    }
+    src.set(dst);
+  };
+  for (let k = 0; k < iterations; k++) {
+    pass(0.5);
+    pass(-0.53);
+  }
+  pos.array.set(src);
+  pos.needsUpdate = true;
 }
 
 function disposeMaterialTextures(material) {
@@ -446,6 +492,10 @@ export function createAngel(marble) {
   const surface = marble.body.clone();
   surface.side = THREE.DoubleSide;
   surface.name = 'VirgoMarble';
+  // The marble normal map is a fine grain. On this shell it reads as static,
+  // so the body keeps the triplanar color and a soft vein relief only.
+  surface.normalMap = null;
+  surface.normalScale.set(0, 0);
 
   let disposed = false;
   let ready = false;

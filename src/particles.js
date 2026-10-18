@@ -166,13 +166,13 @@ const particleFragment = /* glsl */ `
 `;
 
 const WISPS = [
-  { pos: [-1.05, -0.15, 0.55], scale: [3.1, 1.15], opacity: 0.2, phase: 0.4 },
-  { pos: [0.85, -0.45, 0.35], scale: [3.6, 1.35], opacity: 0.16, phase: 1.7 },
-  { pos: [-1.8, 0.15, -0.15], scale: [2.4, 0.95], opacity: 0.13, phase: 2.4 },
-  { pos: [1.65, -0.05, 0.7], scale: [2.6, 1.05], opacity: 0.14, phase: 0.9 },
-  { pos: [0.15, -0.85, 0.95], scale: [4.0, 1.45], opacity: 0.12, phase: 3.1 },
-  { pos: [-0.35, 0.35, -0.55], scale: [2.2, 0.85], opacity: 0.1, phase: 4.2 },
-  { pos: [0.4, -0.25, 1.35], scale: [2.8, 1.0], opacity: 0.11, phase: 5.0 },
+  { pos: [-1.05, -0.15, 0.55], scale: [2.4, 0.85], opacity: 0.07, phase: 0.4 },
+  { pos: [0.85, -0.45, 0.35], scale: [2.6, 0.95], opacity: 0.055, phase: 1.7 },
+  { pos: [-1.8, 0.15, -0.15], scale: [1.8, 0.7], opacity: 0.045, phase: 2.4 },
+  { pos: [1.65, -0.05, 0.7], scale: [2.0, 0.75], opacity: 0.05, phase: 0.9 },
+  { pos: [0.15, -0.85, 0.95], scale: [2.8, 0.95], opacity: 0.04, phase: 3.1 },
+  { pos: [-0.35, 0.35, -0.55], scale: [1.6, 0.6], opacity: 0.035, phase: 4.2 },
+  { pos: [0.4, -0.25, 1.35], scale: [2.0, 0.7], opacity: 0.04, phase: 5.0 },
 ];
 
 function buildAttributes(count, sparks, rand) {

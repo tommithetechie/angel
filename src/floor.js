@@ -239,5 +239,12 @@ export function createFloor(scene, quality) {
       uniforms.uBlur.value = THREE.MathUtils.lerp(0.0008, 0.0065, still);
       uniforms.uMoonStrength.value = THREE.MathUtils.lerp(0.0, 1.35, still);
     },
+    dispose() {
+      mirror.dispose();
+      geometry.dispose();
+      sky.geometry.dispose();
+      sky.material.dispose();
+      group.removeFromParent();
+    },
   };
 }

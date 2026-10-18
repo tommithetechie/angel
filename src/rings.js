@@ -507,8 +507,8 @@ export function createRings() {
 
   const halo = new THREE.Group();
   halo.name = 'halo';
-  halo.position.set(0, 2.55, -0.82);
-  halo.rotation.x = -0.16;
+  halo.position.set(0, 2.06, -0.46);
+  halo.rotation.x = -0.08;
   rig.add(halo);
 
   const haloMap = createHaloTexture();
@@ -529,7 +529,7 @@ export function createRings() {
     new THREE.TorusGeometry(0.78, 0.011, 12, 160),
     additiveFog(
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color().setRGB(6.5, 3.6, 1.35),
+        color: new THREE.Color().setRGB(4.4, 2.55, 1.05),
         transparent: true,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
@@ -613,6 +613,31 @@ export function createRings() {
       if (next === null) return;
       blend = next;
       apply();
+    },
+    dispose() {
+      const geometries = new Set();
+      const materials = new Set();
+      const textures = new Set();
+      const takeMaterial = (material) => {
+        if (!material) return;
+        materials.add(material);
+        if (material.map) textures.add(material.map);
+        const uniforms = material.uniforms;
+        if (!uniforms) return;
+        for (const key of Object.keys(uniforms)) {
+          const value = uniforms[key]?.value;
+          if (value?.isTexture) textures.add(value);
+        }
+      };
+      group.traverse((obj) => {
+        if (obj.geometry) geometries.add(obj.geometry);
+        if (Array.isArray(obj.material)) obj.material.forEach(takeMaterial);
+        else takeMaterial(obj.material);
+      });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
+      for (const texture of textures) texture.dispose();
+      group.removeFromParent();
     },
   };
 }

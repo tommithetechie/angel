@@ -26,21 +26,21 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x05040a, 1);
+renderer.setClearColor(0x040308, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.92;
+renderer.toneMappingExposure = 0.74;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.domElement.setAttribute('aria-label', 'Seraphim, a marble figure in a dark reflective space');
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05040a);
-scene.fog = new THREE.FogExp2(0x100e14, 0.016);
+scene.background = new THREE.Color(0x040308);
+scene.fog = new THREE.FogExp2(0x09080d, 0.012);
 
-const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.12, 140);
-const lookAt = new THREE.Vector3(0, 1.0, 0);
-const introFrom = new THREE.Vector3(0.72, 2.2, 14.6);
-const introTo = new THREE.Vector3(0.22, 1.7, 9.5);
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.12, 140);
+const lookAt = new THREE.Vector3(0.03, 1.52, 0);
+const introFrom = new THREE.Vector3(0.55, 1.82, 15.2);
+const introTo = new THREE.Vector3(0.12, 1.26, 9.35);
 camera.position.copy(settle ? introTo : introFrom);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -53,8 +53,8 @@ controls.enablePan = true;
 controls.screenSpacePanning = false;
 controls.minDistance = 3.6;
 controls.maxDistance = 18;
-controls.minPolarAngle = 0.48;
-controls.maxPolarAngle = Math.PI * 0.5 - 0.04;
+controls.minPolarAngle = 0.42;
+controls.maxPolarAngle = Math.PI * 0.58;
 controls.autoRotateSpeed = 0.38;
 controls.update();
 
@@ -67,7 +67,7 @@ const room = new RoomEnvironment();
 const envTarget = pmrem.fromScene(room, 0.04);
 scene.environment = envTarget.texture;
 scene.userData.environmentTarget = envTarget;
-scene.environmentIntensity = 1.25;
+scene.environmentIntensity = 0.78;
 pmrem.dispose();
 room.dispose();
 
@@ -105,12 +105,15 @@ floor.setMoonDirection(moon.position);
 scene.add(floor.group);
 
 const composer = new EffectComposer(renderer);
+const composerSamples = quality.low ? 0 : 2;
+composer.renderTarget1.samples = composerSamples;
+composer.renderTarget2.samples = composerSamples;
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.46,
-  0.42,
-  1.45,
+  0.34,
+  0.58,
+  1.62,
 );
 bloom.highPassUniforms.smoothWidth.value = 0.42;
 composer.addPass(bloom);
@@ -161,6 +164,7 @@ window.addEventListener('keydown', (event) => {
 hud.button.addEventListener('click', () => forms.toggle());
 
 let resizeLock = false;
+let composerSized = false;
 window.addEventListener('resize', resize);
 if (typeof ResizeObserver === 'function') {
   const viewport = new ResizeObserver(() => resize());
@@ -172,8 +176,11 @@ const clock = new THREE.Clock();
 clock.getDelta();
 const stepped = new WeakSet();
 let marbleBroken = false;
+let frameId = 0;
+let released = false;
 
 function frame() {
+  if (released) return;
   const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
 
@@ -207,8 +214,38 @@ function frame() {
   grade.uniforms.uTime.value = time;
 
   composer.render();
-  requestAnimationFrame(frame);
+  frameId = requestAnimationFrame(frame);
 }
+
+function release() {
+  if (released) return;
+  released = true;
+  cancelAnimationFrame(frameId);
+  for (const mod of modules) callDispose(mod);
+  callDispose(floor);
+  callDispose(marble);
+  composer.dispose();
+  controls.dispose();
+  envTarget.dispose();
+  moon.geometry.dispose();
+  moon.material.dispose();
+  renderer.dispose();
+  renderer.domElement.remove();
+}
+
+function callDispose(target) {
+  if (!target || typeof target.dispose !== 'function') return;
+  try {
+    target.dispose();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+window.addEventListener('pagehide', (event) => {
+  if (event.persisted) return;
+  release();
+});
 
 frame();
 
@@ -237,7 +274,7 @@ function resize() {
     grade.uniforms.uChroma.value === next.chroma &&
     grade.uniforms.uGrain.value === next.grain &&
     grade.uniforms.uVignette.value === next.vignette;
-  if (sameBuffer && sameGrade) {
+  if (sameBuffer && sameGrade && composerSized) {
     quality.low = next.low;
     quality.pixelRatio = pixelRatio;
     return;
@@ -260,6 +297,7 @@ function resize() {
     composer.setPixelRatio(pixelRatio);
     composer.setSize(width, height);
   }
+  composerSized = true;
   resizeLock = false;
 }
 
@@ -273,9 +311,9 @@ function detectQuality() {
     pixelRatio: low
       ? Math.min(window.devicePixelRatio || 1, 1.15)
       : Math.min(window.devicePixelRatio || 1, 1.6),
-    chroma: low ? 0 : 0.0016,
-    grain: low ? 0.018 : 0.03,
-    vignette: low ? 0.28 : 0.38,
+    chroma: low ? 0 : 0.0011,
+    grain: low ? 0.008 : 0.014,
+    vignette: low ? 0.16 : 0.22,
   };
 }
 
@@ -296,20 +334,20 @@ function createLights() {
   hemi.userData.i0 = 0.22;
   hemi.userData.i1 = 0.48;
 
-  const key = tagLight(new THREE.DirectionalLight(0xfff3e6, 2.15), 0xfff3e6, 2.15, 0xd5e4ea, 0.72);
-  key.position.set(-3.4, 5.6, 4.4);
+  const key = tagLight(new THREE.DirectionalLight(0xfff4ea, 1.22), 0xfff4ea, 1.22, 0xd5e4ea, 0.62);
+  key.position.set(-2.1, 4.4, 5.4);
 
-  const rim = tagLight(new THREE.DirectionalLight(0xd7e4ff, 1.7), 0xd7e4ff, 1.7, 0x8eb8c4, 0.38);
-  rim.position.set(3.6, 3.4, -4.4);
+  const rim = tagLight(new THREE.DirectionalLight(0xd5e2ff, 0.92), 0xd5e2ff, 0.92, 0x8eb8c4, 0.32);
+  rim.position.set(3.4, 3.6, -3.8);
 
-  const fill = tagLight(new THREE.DirectionalLight(0x93a6c8, 0.24), 0x93a6c8, 0.24, 0x7f9aa6, 0.4);
-  fill.position.set(0.2, 1.5, 5.6);
+  const fill = tagLight(new THREE.DirectionalLight(0x9aafc8, 0.28), 0x9aafc8, 0.28, 0x7f9aa6, 0.42);
+  fill.position.set(0.8, 1.3, 5.2);
 
-  const warmA = tagLight(new THREE.PointLight(0xffc56a, 3.4, 8, 2), 0xffc56a, 3.4, 0xffc56a, 0.35);
-  warmA.position.set(1.05, 2.2, 1.45);
+  const warmA = tagLight(new THREE.PointLight(0xffc56a, 2.55, 7.2, 2), 0xffc56a, 2.55, 0xffc56a, 0.28);
+  warmA.position.set(1.25, 1.72, 1.65);
 
-  const warmB = tagLight(new THREE.PointLight(0xffb25a, 2.2, 8.5, 2), 0xffb25a, 2.2, 0xffb25a, 0.12);
-  warmB.position.set(-1.4, 0.62, 1.4);
+  const warmB = tagLight(new THREE.PointLight(0xffb25a, 1.45, 7.5, 2), 0xffb25a, 1.45, 0xffb25a, 0.1);
+  warmB.position.set(-1.45, 0.72, 1.55);
 
   const moonDir = tagLight(new THREE.DirectionalLight(0xe7eeff, 0), 0xe7eeff, 0, 0xe7eeff, 0.85);
   moonDir.position.set(3.15, 3.45, -6.1);
@@ -358,7 +396,7 @@ function createMoon() {
   moon.name = 'moon';
   moon.position.set(3.15, 3.45, -6.1);
   moon.scale.setScalar(8.4);
-  moon.userData.stillIntensity = 1.45;
+  moon.userData.stillIntensity = 1.85;
   moon.renderOrder = 1;
   return moon;
 }
@@ -471,13 +509,14 @@ function createHud() {
     button.textContent = label;
     button.setAttribute('aria-label', `Switch to the ${label.toLowerCase()} form`);
     button.setAttribute('aria-pressed', form === 'still' ? 'true' : 'false');
+    window.clearTimeout(timer);
+    // A reversal before the fade finishes must restore the line already on screen.
     if (!animate || form === shown) {
       caption.classList.remove('is-out');
       write(form);
       return;
     }
     caption.classList.add('is-out');
-    window.clearTimeout(timer);
     timer = window.setTimeout(() => {
       write(form);
       caption.classList.remove('is-out');

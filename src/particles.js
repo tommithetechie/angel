@@ -308,9 +308,10 @@ export function createParticles(marble) {
     }
   }
 
-  window.addEventListener('resize', () => {
+  const onResize = () => {
     material.uniforms.uPixelRatio.value = pixelRatioCap();
-  });
+  };
+  window.addEventListener('resize', onResize);
 
   return {
     group,
@@ -333,6 +334,16 @@ export function createParticles(marble) {
       blend = next;
       material.uniforms.uStill.value = blend;
       applyWisps();
+    },
+    dispose() {
+      window.removeEventListener('resize', onResize);
+      geo.dispose();
+      const sprite = material.uniforms.uSprite.value;
+      if (sprite) sprite.dispose();
+      material.dispose();
+      wispMap.dispose();
+      for (const sprite of wisps) sprite.material.dispose();
+      group.removeFromParent();
     },
   };
 }

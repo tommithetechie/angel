@@ -1,0 +1,155 @@
+:root {
+  --still: 0;
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #05040a;
+  overflow: hidden;
+  touch-action: none;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: color-mix(in srgb, rgba(236, 228, 214, 0.9), rgba(214, 232, 230, 0.9) calc(var(--still) * 100%));
+  opacity: 0;
+  animation: hud-in 1.6s ease 0.35s forwards;
+  text-shadow: 0 1px 18px rgba(0, 0, 0, 0.45);
+}
+
+.hud-title,
+.hud-caption {
+  font-family: "Iowan Old Style", Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-weight: 400;
+}
+
+.hud-title {
+  position: absolute;
+  top: max(28px, env(safe-area-inset-top));
+  left: max(32px, env(safe-area-inset-left));
+  margin: 0;
+  font-size: clamp(11px, 1.4vw, 13px);
+  letter-spacing: 0.48em;
+  text-transform: uppercase;
+  text-indent: 0.48em;
+}
+
+.hud-caption {
+  position: absolute;
+  left: max(32px, env(safe-area-inset-left));
+  bottom: max(36px, calc(env(safe-area-inset-bottom) + 28px));
+  margin: 0;
+  max-width: min(18rem, 62vw);
+  font-size: clamp(15px, 2.1vw, 18px);
+  font-style: italic;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  transition: opacity 0.55s ease;
+}
+
+.hud-caption .line {
+  display: block;
+}
+
+.hud-caption.is-out {
+  opacity: 0;
+}
+
+.hud-toggle {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  bottom: max(26px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.55rem 1.2rem;
+  min-height: 36px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+  background: rgba(6, 5, 8, 0.72);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  text-transform: uppercase;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.4s ease, border-color 0.4s ease, transform 0.4s ease;
+}
+
+.hud-toggle:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border-color: color-mix(in srgb, currentColor 70%, transparent);
+}
+
+.hud-toggle:focus {
+  outline: none;
+}
+
+.hud-toggle:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 4px;
+}
+
+@media (max-width: 720px) {
+  .hud-title {
+    left: max(18px, env(safe-area-inset-left));
+    letter-spacing: 0.36em;
+    text-indent: 0.36em;
+  }
+
+  .hud-caption {
+    left: max(18px, env(safe-area-inset-left));
+    bottom: max(78px, calc(env(safe-area-inset-bottom) + 64px));
+    font-size: 14px;
+    max-width: min(16rem, 70vw);
+  }
+
+  .hud-toggle {
+    letter-spacing: 0.28em;
+    text-indent: 0.28em;
+  }
+}
+
+@media (max-height: 520px) {
+  .hud-caption {
+    bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px));
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud,
+  .hud-caption,
+  .hud-toggle {
+    animation: none;
+    transition: none;
+  }
+
+  .hud {
+    opacity: 1;
+  }
+}
+
+@keyframes hud-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

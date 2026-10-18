@@ -44,6 +44,18 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+const formBroken = new WeakSet();
+
+function callSetForm(target, form, t) {
+  if (!target || formBroken.has(target) || typeof target.setForm !== 'function') return;
+  try {
+    target.setForm(form, t);
+  } catch (error) {
+    formBroken.add(target);
+    console.error(error);
+  }
+}
+
 function smoothstep(t) {
   const x = THREE.MathUtils.clamp(t, 0, 1);
   return x * x * (3 - 2 * x);
@@ -58,7 +70,14 @@ export function createDebrisModule(marble) {
   const found = import.meta.glob('./debris.js', { eager: true });
   const mod = found['./debris.js'];
   if (!mod || typeof mod.createDebris !== 'function') return null;
-  return mod.createDebris(marble);
+  try {
+    const debris = mod.createDebris(marble);
+    if (!debris?.group) return null;
+    return debris;
+  } catch (error) {
+    console.warn('Skipping debris module.', error);
+    return null;
+  }
 }
 
 export function createForms({
@@ -68,6 +87,7 @@ export function createForms({
   floor,
   lights,
   moon,
+  marble,
   modules,
   grade,
   onChange,
@@ -127,11 +147,12 @@ export function createForms({
     moon.visible = weight > 0.001;
 
     if (grade) grade.uniforms.uStill.value = weight;
-    if (floor) floor.setForm(form, t);
-
-    for (const mod of modules) {
-      if (mod && typeof mod.setForm === 'function') mod.setForm(form, t);
-    }
+    // Floor, marble, and scene modules all share this contract.
+    // Marble's setForm lands in #3; until then the method is absent.
+    // Angel, rings, and particles may gain setForm in later PRs.
+    callSetForm(floor, form, t);
+    callSetForm(marble, form, t);
+    for (const mod of modules) callSetForm(mod, form, t);
 
     document.documentElement.style.setProperty('--still', weight.toFixed(4));
     document.body.style.backgroundColor = `#${scene.background.getHexString()}`;

@@ -127,7 +127,7 @@ canvas {
 
 @media (max-height: 520px) {
   .hud-caption {
-    bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px));
+    bottom: max(96px, calc(env(safe-area-inset-bottom) + 88px));
     font-size: 13px;
   }
 }

@@ -59,9 +59,17 @@ controls.autoRotateSpeed = 0.38;
 controls.update();
 
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.18).texture;
+const room = new RoomEnvironment();
+// Keep the target. fromScene's color texture is scene.environment; dropping
+// the target would orphan its depth buffer without a dispose().
+// 0.04 is the largest blur that stays inside PMREMGenerator's 20-sample cap
+// at the 256px cube. A wider sigma logs a clip warning and then clamps.
+const envTarget = pmrem.fromScene(room, 0.04);
+scene.environment = envTarget.texture;
+scene.userData.environmentTarget = envTarget;
 scene.environmentIntensity = 1.25;
 pmrem.dispose();
+room.dispose();
 
 const lights = createLights();
 scene.add(
@@ -118,6 +126,7 @@ const forms = createForms({
   floor,
   lights,
   moon,
+  marble,
   modules,
   grade,
   reducedMotion,
@@ -151,11 +160,18 @@ window.addEventListener('keydown', (event) => {
 });
 hud.button.addEventListener('click', () => forms.toggle());
 
+let resizeLock = false;
 window.addEventListener('resize', resize);
+if (typeof ResizeObserver === 'function') {
+  const viewport = new ResizeObserver(() => resize());
+  viewport.observe(document.documentElement);
+}
 resize();
 
 const clock = new THREE.Clock();
 clock.getDelta();
+const stepped = new WeakSet();
+let marbleBroken = false;
 
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -178,9 +194,16 @@ function frame() {
 
   forms.update(dt);
   floor.update(time);
-  for (const mod of modules) {
-    if (typeof mod.update === 'function') mod.update(time, dt);
+  // Marble's pulse is update(time). #3 adds it; older marble.js has no such method.
+  if (!marbleBroken && typeof marble.update === 'function') {
+    try {
+      marble.update(time);
+    } catch (error) {
+      marbleBroken = true;
+      console.error(error);
+    }
   }
+  for (const mod of modules) stepModule(mod, time, dt);
   grade.uniforms.uTime.value = time;
 
   composer.render();
@@ -189,15 +212,55 @@ function frame() {
 
 frame();
 
+function stepModule(mod, time, dt) {
+  if (!mod || typeof mod.update !== 'function' || stepped.has(mod)) return;
+  try {
+    mod.update(time, dt);
+  } catch (error) {
+    stepped.add(mod);
+    console.error(error);
+  }
+}
+
 function resize() {
+  if (resizeLock) return;
   const width = window.innerWidth;
   const height = window.innerHeight;
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-  renderer.setPixelRatio(quality.pixelRatio);
-  renderer.setSize(width, height);
-  composer.setPixelRatio(quality.pixelRatio);
-  composer.setSize(width, height);
+  if (width < 2 || height < 2) return;
+  const next = detectQuality();
+  const pixelRatio = next.pixelRatio;
+  const bufferW = Math.floor(width * pixelRatio);
+  const bufferH = Math.floor(height * pixelRatio);
+  const sameBuffer =
+    renderer.domElement.width === bufferW && renderer.domElement.height === bufferH;
+  const sameGrade =
+    grade.uniforms.uChroma.value === next.chroma &&
+    grade.uniforms.uGrain.value === next.grain &&
+    grade.uniforms.uVignette.value === next.vignette;
+  if (sameBuffer && sameGrade) {
+    quality.low = next.low;
+    quality.pixelRatio = pixelRatio;
+    return;
+  }
+
+  resizeLock = true;
+  quality.low = next.low;
+  quality.pixelRatio = pixelRatio;
+  quality.chroma = next.chroma;
+  quality.grain = next.grain;
+  quality.vignette = next.vignette;
+  grade.uniforms.uChroma.value = next.chroma;
+  grade.uniforms.uGrain.value = next.grain;
+  grade.uniforms.uVignette.value = next.vignette;
+  if (!sameBuffer) {
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(width, height);
+    composer.setPixelRatio(pixelRatio);
+    composer.setSize(width, height);
+  }
+  resizeLock = false;
 }
 
 function detectQuality() {

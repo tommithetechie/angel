@@ -42,11 +42,11 @@ function paintRadiant(dir, color) {
   const rim = normalize(3.4, 3.6, -3.8);
   const warmA = normalize(1.25, 1.72, 1.65);
   const warmB = normalize(-1.45, 0.72, 1.55);
-  addLobe(color, dir, key, [2.4, 1.7, 1.05], 3);
-  addLobe(color, dir, key, [9.5, 6.8, 4.1], 22);
-  addLobe(color, dir, rim, [1.8, 2.4, 4.2], 16);
-  addLobe(color, dir, warmA, [16, 8.2, 2.2], 70);
-  addLobe(color, dir, warmB, [11, 5.2, 1.3], 54);
+  addLobe(color, dir, key, [1.5, 1.05, 0.65], 3);
+  addLobe(color, dir, key, [5.4, 3.8, 2.3], 22);
+  addLobe(color, dir, rim, [1.1, 1.5, 2.6], 16);
+  addLobe(color, dir, warmA, [7.2, 3.6, 1.0], 70);
+  addLobe(color, dir, warmB, [4.8, 2.2, 0.55], 54);
   addLobe(color, dir, normalize(0.1, 1, 0.15), [1.6, 1.25, 0.85], 5);
 }
 

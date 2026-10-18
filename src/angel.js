@@ -166,19 +166,18 @@ function radialDisplace(vertex, radiusFn) {
  * +Z is the camber / quill. Instanced scale is (width, length, 1).
  */
 function createFeatherGeometry() {
-  const lengthSegs = 11;
-  const across = 4;
+  const lengthSegs = 14;
+  const across = 6;
   const positions = [];
   const colors = [];
   const uvs = [];
   const indices = [];
 
   const halfWidth = (t, sign) => {
-    const grow = t / (0.07 + t);
-    const belly = Math.sin(Math.PI * Math.pow(t, 0.62));
-    const tip = Math.pow(1 - t, 0.42);
-    const w = 0.0035 + 0.078 * belly * tip * (0.22 + 0.78 * grow);
-    return w * (sign < 0 ? 0.8 : 1.14);
+    const belly = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.8));
+    const tip = Math.pow(1 - t, 1.35);
+    const w = 0.02 + 0.16 * belly * (0.42 + 0.58 * tip);
+    return w * (sign < 0 ? 0.94 : 1.04);
   };
 
   for (let i = 0; i <= lengthSegs; i++) {
@@ -196,11 +195,9 @@ function createFeatherGeometry() {
       const z = camber + quill - arc;
       positions.push(x, y, z);
       uvs.push(u, t);
-      const edge = 1 - 0.42 * Math.pow(Math.abs(s), 1.15);
-      const shaft = 1 - 0.22 * Math.exp(-(s * s) / 0.006);
-      const tipShade = 1 - 0.1 * smoothstep(0.72, 1, t);
-      const baseShade = 0.82 + 0.18 * smoothstep(0, 0.18, t);
-      const shade = edge * shaft * tipShade * baseShade;
+      const edge = 1 - 0.08 * Math.abs(s);
+      const tipShade = 1 - 0.04 * smoothstep(0.8, 1, t);
+      const shade = edge * tipShade;
       colors.push(shade, shade, Math.min(1, shade + 0.02));
     }
   }
@@ -226,20 +223,18 @@ function createFeatherGeometry() {
 function bodyDisplace(vertex) {
   radialDisplace(vertex, (theta, y) => {
     const profile = [
-      [-0.22, 0.048],
-      [-0.14, 0.078],
-      [-0.06, 0.1],
-      [0.02, 0.116],
-      [0.1, 0.12],
-      [0.16, 0.092],
-      [0.22, 0.074],
-      [0.3, 0.086],
-      [0.38, 0.1],
-      [0.46, 0.108],
-      [0.54, 0.1],
-      [0.62, 0.086],
-      [0.7, 0.058],
-      [0.78, 0.042],
+      [-0.24, 0.058],
+      [-0.14, 0.092],
+      [-0.04, 0.118],
+      [0.06, 0.132],
+      [0.14, 0.122],
+      [0.22, 0.108],
+      [0.3, 0.112],
+      [0.4, 0.118],
+      [0.5, 0.112],
+      [0.6, 0.096],
+      [0.7, 0.068],
+      [0.8, 0.048],
     ];
     let r = profile[0][1];
     for (let i = 0; i < profile.length - 1; i++) {
@@ -247,68 +242,40 @@ function bodyDisplace(vertex) {
       const [y1, r1] = profile[i + 1];
       if (y >= y0 && y <= y1) {
         const f = (y - y0) / (y1 - y0);
-        r = r0 + (r1 - r0) * f;
+        const s = f * f * (3 - 2 * f);
+        r = r0 + (r1 - r0) * s;
         break;
       }
       if (y > y1) r = r1;
     }
 
     const front = Math.max(0, Math.cos(theta));
-    const rear = Math.max(0, -Math.cos(theta));
     const side = Math.abs(Math.sin(theta));
-
-    for (const s of [1, -1]) {
-      const dy = (y - 0.5) / 0.1;
-      const dt = (theta - s * 0.48) / 0.36;
-      const d2 = dy * dy + dt * dt;
-      if (d2 < 1) {
-        const k = Math.cos(Math.sqrt(d2) * Math.PI * 0.5);
-        r += 0.05 * k * k;
-      }
-    }
-
-    const shoulder = Math.exp(-((y - 0.64) ** 2) / (2 * 0.05 * 0.05));
-    r += 0.058 * shoulder * Math.pow(side, 0.55);
-    const glute = Math.exp(-((y - 0.0) ** 2) / (2 * 0.065 * 0.065));
-    r += 0.04 * glute * rear * (0.5 + 0.5 * side);
-    const hip = Math.exp(-((y - 0.06) ** 2) / (2 * 0.055 * 0.055));
-    r += 0.018 * hip * side;
-    const scapula = Math.exp(-((y - 0.58) ** 2) / (2 * 0.045 * 0.045));
-    r += 0.014 * scapula * rear;
-    const clav = Math.exp(-((y - 0.69) ** 2) / (2 * 0.018 * 0.018));
-    const clavSide = Math.exp(-((Math.abs(theta) - 0.65) ** 2) / (2 * 0.22 * 0.22));
-    r += 0.01 * clav * clavSide * front;
-    const navel = Math.exp(-((y - 0.3) ** 2) / (2 * 0.012 * 0.012) - (theta * theta) / (2 * 0.045 * 0.045));
-    r -= 0.011 * navel;
-    const sternum = Math.exp(-((y - 0.52) ** 2) / (2 * 0.055 * 0.055) - (theta * theta) / (2 * 0.05 * 0.05));
-    r -= 0.012 * sternum;
-
+    const chest = Math.exp(-((y - 0.5) ** 2) / 0.02);
+    r += 0.02 * chest * front;
+    const hip = Math.exp(-((y - 0.06) ** 2) / 0.012);
+    r += 0.016 * hip * (0.35 + 0.65 * side);
+    const shoulder = Math.exp(-((y - 0.66) ** 2) / 0.008);
+    r += 0.02 * shoulder * side;
     return r;
   });
 
   const y = vertex.y;
-  vertex.z += 0.02 * Math.exp(-((y - 0.5) ** 2) / (2 * 0.11 * 0.11));
-  vertex.z -= 0.014 * Math.exp(-((y - 0.2) ** 2) / (2 * 0.07 * 0.07));
-  vertex.z -= 0.01 * Math.exp(-((y - 0.0) ** 2) / (2 * 0.06 * 0.06));
+  vertex.z += 0.012 * Math.exp(-((y - 0.48) ** 2) / 0.02);
 }
 
 function limbGeometry(profile, length, kind) {
   const shaped = profile.map(([t, r]) => [t * length, r]);
-  const geo = lathe(shaped, kind === 'thigh' ? 28 : 22, (vertex) => {
+  const geo = lathe(shaped, kind === 'thigh' ? 36 : 28, (vertex) => {
     const t = THREE.MathUtils.clamp(vertex.y / length, 0, 1);
     radialDisplace(vertex, (th, _y, r) => {
       let R = r;
       if (kind === 'thigh') {
-        const inner = Math.max(0, -Math.cos(th));
-        R -= 0.008 * inner * Math.sin(Math.PI * t);
-        const quad = Math.exp(-((t - 0.35) ** 2) / 0.04) * Math.max(0, Math.cos(th));
-        R += 0.008 * quad;
+        const quad = Math.exp(-((t - 0.4) ** 2) / 0.08) * Math.max(0, Math.cos(th));
+        R += 0.004 * quad;
       } else if (kind === 'shin') {
-        const calf = Math.exp(-((t - 0.28) ** 2) / 0.02) * Math.max(0, -Math.cos(th));
-        R += 0.01 * calf;
-      } else if (kind === 'upper') {
-        const biceps = Math.exp(-((t - 0.4) ** 2) / 0.03) * Math.max(0, Math.cos(th));
-        R += 0.006 * biceps;
+        const calf = Math.exp(-((t - 0.32) ** 2) / 0.05) * Math.max(0, -Math.cos(th));
+        R += 0.004 * calf;
       }
       return R;
     });
@@ -355,8 +322,8 @@ function sculptHead(geo) {
       vertex.y -= 0.045 * chin * narrow;
       vertex.z += 0.02 * chin * narrow;
     }
-    const nose = Math.exp(-(vertex.x * vertex.x) / 0.008 - ((vertex.y - 0.01) ** 2) / 0.012);
-    if (vertex.z > 0) vertex.z += 0.055 * nose;
+    const nose = Math.exp(-(vertex.x * vertex.x) / 0.012 - ((vertex.y - 0.01) ** 2) / 0.016);
+    if (vertex.z > 0) vertex.z += 0.018 * nose;
     pos.setXYZ(i, vertex.x, vertex.y, vertex.z);
   }
   geo.computeVertexNormals();
@@ -412,22 +379,22 @@ const FORE = 0.34;
 
 const THIGH_GEO = limbGeometry(
   [
-    [0, 0.078],
-    [0.12, 0.08],
-    [0.4, 0.06],
-    [0.75, 0.05],
-    [1, 0.042],
+    [0, 0.09],
+    [0.18, 0.088],
+    [0.45, 0.068],
+    [0.78, 0.054],
+    [1, 0.046],
   ],
   THIGH,
   'thigh',
 );
 const SHIN_GEO = limbGeometry(
   [
-    [0, 0.042],
-    [0.18, 0.05],
-    [0.4, 0.038],
-    [0.78, 0.026],
-    [1, 0.02],
+    [0, 0.046],
+    [0.22, 0.05],
+    [0.5, 0.04],
+    [0.82, 0.03],
+    [1, 0.024],
   ],
   SHIN,
   'shin',
@@ -479,20 +446,20 @@ function featherEnvelope(kind, t, rowF, layerF) {
   if (kind === 'middle') {
     const base = THREE.MathUtils.lerp(0.58, 0.92, Math.pow(t, 0.42));
     const row = THREE.MathUtils.lerp(0.46, 1, smoothstep(-0.15, 1, rowF));
-    const primary = t > 0.74 ? THREE.MathUtils.lerp(0.5, 1.05, smoothstep(0.15, 1, rowF) * (layerF < 0.45 ? 1 : 0.4)) : 1;
+    const primary = THREE.MathUtils.lerp(0.92, 1, smoothstep(0.2, 0.85, t));
     return base * row * layer * primary;
   }
-  const belly = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.55));
-  const taper = THREE.MathUtils.lerp(1, 0.2, Math.pow(t, 1.55));
-  const base = THREE.MathUtils.lerp(0.48, 1.2, Math.pow(belly, 0.42)) * taper;
+  const belly = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.7));
+  const taper = THREE.MathUtils.lerp(1, 0.45, Math.pow(t, 1.35));
+  const base = THREE.MathUtils.lerp(0.62, 0.95, Math.pow(belly, 0.55)) * taper;
   const row = THREE.MathUtils.lerp(0.55, 1, 1 - Math.abs(rowF) * 0.35);
   return base * row * layer;
 }
 
 function makeWingSpecs(light) {
-  const along = (n) => (light ? Math.max(10, Math.round(n * 0.75)) : n);
-  const rows = (n) => (light ? Math.max(3, n - 1) : n);
-  const layers = light ? 2 : 3;
+  const along = (n) => (light ? Math.max(5, Math.round(n * 0.7)) : n);
+  const rows = (n) => (light ? Math.max(2, n - 1) : n);
+  const layers = light ? 1 : 2;
   const specs = [];
   for (const side of [1, -1]) {
     const s = side;
@@ -501,18 +468,18 @@ function makeWingSpecs(light) {
       kind: 'upper',
       bone: s > 0 ? 'wingUL' : 'wingUR',
       side: s,
-      along: along(18),
-      rows: rows(4),
+      along: along(7),
+      rows: rows(3),
       layers,
-      flutter: 0.055,
+      flutter: 0.03,
       open: {
         points: [v3(0, 0, 0), v3(0.24 * s, 0.12, -0.06), v3(0.14 * s, 0.38, -0.01), v3(0.015 * s, 0.58, 0.04)],
         hints: [v3(0.16 * s, 0.92, 0.1), v3(0.06 * s, 0.98, 0.05), v3(0.0, 1, 0.02)],
-        fan0: 0.48,
-        fan1: 0.18,
+        fan0: 0.32,
+        fan1: 0.14,
         out: 0.84,
-        lenMul: 0.78,
-        width: 1.18,
+        lenMul: 0.7,
+        width: 1.7,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.05 * s, -0.28, -0.06), v3(0.03 * s, -0.58, -0.04), v3(0.01 * s, -0.92, -0.02)],
@@ -529,18 +496,18 @@ function makeWingSpecs(light) {
       kind: 'middle',
       bone: s > 0 ? 'wingML' : 'wingMR',
       side: s,
-      along: along(17),
-      rows: rows(4),
+      along: along(7),
+      rows: rows(3),
       layers,
-      flutter: 0.07,
+      flutter: 0.035,
       open: {
         points: [v3(0, 0, 0), v3(0.24 * s, -0.02, -0.04), v3(0.5 * s, 0.04, 0.0), v3(0.66 * s, 0.1, 0.03)],
         hints: [v3(0.64 * s, -0.5, 0.06), v3(0.9 * s, -0.12, 0.04), v3(0.97 * s, 0.06, 0.02)],
-        fan0: 1.25,
-        fan1: 0.5,
-        out: 0.92,
-        lenMul: 0.8,
-        width: 1.05,
+        fan0: 0.62,
+        fan1: 0.28,
+        out: 0.9,
+        lenMul: 0.64,
+        width: 1.65,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.08 * s, -0.32, -0.08), v3(0.05 * s, -0.68, -0.05), v3(0.02 * s, -1.05, -0.02)],
@@ -557,19 +524,19 @@ function makeWingSpecs(light) {
       kind: 'lower',
       bone: s > 0 ? 'wingLL' : 'wingLR',
       side: s,
-      along: along(15),
-      rows: rows(5),
+      along: along(6),
+      rows: rows(3),
       layers,
-      flutter: 0.085,
+      flutter: 0.04,
       lenBias: s < 0 ? 1.06 : 1,
       open: {
         points: [v3(0, 0, 0), v3(0.32 * s, -0.32, -0.03), v3(0.2 * s, -1.05, 0.02), v3(0.05 * s, -2.08, 0.04)],
         hints: [v3(0.8 * s, -0.32, 0.04), v3(0.2 * s, -0.94, 0.02), v3(0.04 * s, -1, 0.0)],
-        fan0: 1.08,
-        fan1: 0.32,
-        out: 0.88,
-        lenMul: 1.08,
-        width: 1.18,
+        fan0: 0.55,
+        fan1: 0.2,
+        out: 0.86,
+        lenMul: 0.9,
+        width: 1.7,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.05 * s, -0.22, -0.05), v3(0.03 * s, -0.42, -0.03), v3(0.01 * s, -0.62, -0.01)],
@@ -644,68 +611,25 @@ function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
   return true;
 }
 
-function createHair(material) {
-  const steps = 14;
-  const stride = (steps + 1) * 2;
-  const positions = new Float32Array(HAIR.length * stride * 3);
-  const uvs = new Float32Array(HAIR.length * stride * 2);
-  const indices = [];
-  const strands = HAIR.map((spec, index) => {
-    const base = spec.pts.map((p) => v3(p[0], p[1], p[2]));
-    const vertex = index * stride;
-    for (let i = 0; i <= steps; i++) {
-      const o = (vertex + i * 2) * 2;
-      uvs[o] = 0;
-      uvs[o + 1] = i / steps;
-      uvs[o + 2] = 1;
-      uvs[o + 3] = i / steps;
-      if (i < steps) {
-        const a = vertex + i * 2;
-        indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-      }
-    }
-    return {
-      base,
-      width: spec.w,
-      up: v3(spec.up[0], spec.up[1], spec.up[2]),
-      vertex,
-      scratch: base.map(() => new THREE.Vector3()),
-      curve: new THREE.CatmullRomCurve3(base.map((p) => p.clone())),
-    };
-  });
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  geo.setIndex(indices);
-  geo.userData.steps = steps;
-  for (const strand of strands) {
-    writeRibbon(geo, strand.base, strand.width, strand.up, strand.vertex, strand.curve);
+function createHairMass(material) {
+  const geo = new THREE.SphereGeometry(1, 48, 32);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const front = smoothstep(0.05, 0.85, v.z);
+    const stream = smoothstep(-0.15, 0.9, -v.x);
+    const lower = smoothstep(0.2, -0.95, v.y);
+    v.x = v.x * 0.16 - stream * lower * 0.22 - front * 0.04;
+    v.y = v.y * 0.17 + 0.06 - lower * 0.28;
+    v.z = v.z * 0.14 + front * 0.08 + lower * front * 0.06;
+    pos.setXYZ(i, v.x, v.y, v.z);
   }
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = 'hairMesh';
-  mesh.frustumCulled = false;
-  return { mesh, strands };
+  return mesh;
 }
-
-const HAIR = [
-  { w: 0.072, up: [0, 1, 0], pts: [[0.05, 0.1, 0.12], [-0.04, 0.02, 0.18], [-0.16, -0.08, 0.14], [-0.3, -0.16, 0.04]] },
-  { w: 0.064, up: [0, 1, 0], pts: [[0.1, 0.06, 0.1], [0.0, -0.02, 0.17], [-0.14, -0.12, 0.13], [-0.28, -0.22, 0.03]] },
-  { w: 0.058, up: [0, 0, 1], pts: [[-0.02, 0.12, 0.1], [-0.12, 0.02, 0.17], [-0.24, -0.1, 0.1], [-0.36, -0.2, 0.0]] },
-  { w: 0.05, up: [0, 1, 0], pts: [[0.02, 0.14, 0.06], [-0.08, 0.08, 0.14], [-0.2, -0.02, 0.12], [-0.32, -0.12, 0.04]] },
-  { w: 0.046, up: [0, 1, 0], pts: [[0.08, 0.12, 0.04], [-0.02, 0.06, 0.15], [-0.16, -0.06, 0.12], [-0.28, -0.18, 0.02]] },
-  { w: 0.042, up: [1, 0, 0], pts: [[-0.06, 0.04, 0.14], [-0.16, -0.08, 0.12], [-0.26, -0.22, 0.04], [-0.32, -0.4, -0.02]] },
-  { w: 0.038, up: [1, 0, 0], pts: [[0.0, 0.0, 0.16], [-0.12, -0.12, 0.12], [-0.22, -0.28, 0.04], [-0.28, -0.46, -0.04]] },
-  { w: 0.044, up: [0, 0, 1], pts: [[0.12, 0.08, 0.06], [0.04, -0.02, 0.14], [-0.1, -0.14, 0.1], [-0.22, -0.28, 0.02]] },
-  { w: 0.036, up: [0, 1, 0], pts: [[0.0, 0.16, 0.02], [-0.1, 0.14, 0.1], [-0.22, 0.04, 0.12], [-0.32, -0.06, 0.04]] },
-  { w: 0.034, up: [0, 1, 0], pts: [[0.06, 0.16, -0.02], [-0.06, 0.16, 0.06], [-0.18, 0.08, 0.1], [-0.28, -0.02, 0.04]] },
-  { w: 0.04, up: [0, 1, 0], pts: [[-0.08, 0.12, 0.02], [-0.16, 0.04, 0.08], [-0.26, -0.1, 0.04], [-0.34, -0.24, -0.02]] },
-  { w: 0.032, up: [0, 0, 1], pts: [[-0.1, 0.08, -0.04], [-0.18, -0.04, 0.02], [-0.26, -0.18, 0.0], [-0.3, -0.34, -0.04]] },
-  { w: 0.036, up: [0, 1, 0], pts: [[0.04, 0.13, -0.08], [-0.06, 0.04, -0.1], [-0.14, -0.12, -0.06], [-0.18, -0.32, -0.02]] },
-  { w: 0.028, up: [0, 1, 0], pts: [[0.1, 0.1, -0.02], [0.12, -0.02, 0.02], [0.04, -0.16, 0.04], [-0.08, -0.3, 0.0]] },
-  { w: 0.03, up: [0, 0, 1], pts: [[-0.02, 0.15, 0.08], [-0.12, 0.18, 0.12], [-0.22, 0.1, 0.14], [-0.3, 0.0, 0.06]] },
-  { w: 0.026, up: [1, 0, 0], pts: [[0.02, -0.02, 0.15], [-0.08, -0.16, 0.1], [-0.16, -0.32, 0.02], [-0.2, -0.48, -0.04]] },
-];
 
 function createFigure(material, hairMat, jointMat) {
   const hips = new THREE.Group();
@@ -713,22 +637,20 @@ function createFigure(material, hairMat, jointMat) {
 
   const realBody = lathe(
     [
-      [-0.22, 0.048],
-      [-0.14, 0.078],
-      [-0.06, 0.1],
-      [0.02, 0.116],
-      [0.1, 0.12],
-      [0.16, 0.092],
-      [0.22, 0.074],
-      [0.3, 0.086],
-      [0.38, 0.1],
-      [0.46, 0.108],
-      [0.54, 0.1],
-      [0.62, 0.086],
-      [0.7, 0.058],
-      [0.78, 0.042],
+      [-0.24, 0.058],
+      [-0.14, 0.092],
+      [-0.04, 0.118],
+      [0.06, 0.132],
+      [0.14, 0.122],
+      [0.22, 0.108],
+      [0.3, 0.112],
+      [0.4, 0.118],
+      [0.5, 0.112],
+      [0.6, 0.096],
+      [0.7, 0.068],
+      [0.8, 0.048],
     ],
-    72,
+    96,
     bodyDisplace,
   );
   const bodyMesh = attach(hips, realBody, material, null, 'body');
@@ -746,7 +668,7 @@ function createFigure(material, hairMat, jointMat) {
   const neckMesh = attach(neck, neckGeo, jointMat, null, 'neck');
 
   const head = bone(neck, 'head', [0, 0.145, 0.01]);
-  const headGeo = sculptHead(new THREE.SphereGeometry(0.145, 40, 28));
+  const headGeo = sculptHead(new THREE.SphereGeometry(0.145, 48, 36));
   const headMesh = attach(head, headGeo, material, null, 'head');
 
   const scalpGeo = new THREE.SphereGeometry(0.15, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.62);
@@ -758,16 +680,14 @@ function createFigure(material, hairMat, jointMat) {
   const hair = new THREE.Group();
   hair.name = 'hair';
   head.add(hair);
-  const builtHair = createHair(hairMat);
-  hair.add(builtHair.mesh);
-  const strands = builtHair.strands;
+  hair.add(createHairMass(hairMat));
 
   const shoulderGeo = new THREE.SphereGeometry(0.052, 18, 14);
   const elbowGeo = new THREE.SphereGeometry(0.032, 14, 12);
   const kneeGeo = new THREE.SphereGeometry(0.046, 16, 12);
   const ankleGeo = new THREE.SphereGeometry(0.024, 12, 10);
-  const palmGeo = new THREE.SphereGeometry(0.034, 16, 12);
-  palmGeo.scale(1.05, 1.25, 0.48);
+  const palmGeo = new THREE.SphereGeometry(0.052, 28, 22);
+  palmGeo.scale(0.72, 1.28, 0.46);
   for (const geo of [shoulderGeo, elbowGeo, kneeGeo, ankleGeo, palmGeo]) {
     geo.userData.template = true;
   }
@@ -784,35 +704,7 @@ function createFigure(material, hairMat, jointMat) {
     attach(fore, FORE_GEO, material, null, `fore${tag}`);
     attach(fore, elbowGeo, jointMat, [0, 0.01, 0], `elbow${tag}`);
     const hand = bone(fore, `hand${tag}`, [0, -FORE, 0]);
-    const palm = attach(hand, palmGeo, material, [0, -0.04, 0], `palm${tag}`);
-    palm.scale.set(side > 0 ? 1 : 1, 1, 1);
-
-    const fingerSpecs = [
-      { x: -0.02, z: 0.008, len: 0.078, r: 0.0082, curlR: 0.2, curlS: 0.12 },
-      { x: -0.006, z: 0.011, len: 0.09, r: 0.0086, curlR: 0.16, curlS: 0.1 },
-      { x: 0.009, z: 0.009, len: 0.082, r: 0.008, curlR: 0.18, curlS: 0.12 },
-      { x: 0.022, z: 0.005, len: 0.066, r: 0.007, curlR: 0.24, curlS: 0.16 },
-    ];
-    for (const spec of fingerSpecs) {
-      const finger = bone(hand, `finger${tag}`, [spec.x * side, -0.075, spec.z]);
-      const capLen = Math.max(0.012, spec.len - spec.r * 2);
-      const cap = new THREE.CapsuleGeometry(spec.r, capLen, 3, 6);
-      const mesh = attach(finger, cap, material, [0, -spec.len * 0.5, 0], `fingerMesh${tag}`);
-      mesh.rotation.order = 'XYZ';
-      finger.rotation.order = 'XYZ';
-      fingers.push({ bone: finger, curlR: spec.curlR, curlS: spec.curlS });
-    }
-    const thumb = bone(hand, `thumb${tag}`, [-0.03 * side, -0.028, 0.012]);
-    thumb.rotation.order = 'XYZ';
-    const thumbGeo = new THREE.CapsuleGeometry(0.009, 0.04, 3, 6);
-    attach(thumb, thumbGeo, material, [0, -0.03, 0], `thumbMesh${tag}`);
-    fingers.push({
-      bone: thumb,
-      curlR: 0.32,
-      curlS: 0.25,
-      z: 0.42 * side,
-      stillZ: 0.35 * side,
-    });
+    attach(hand, palmGeo, material, [0, -0.055, 0.01], `palm${tag}`);
 
     arms[tag] = { upper, fore, hand };
   }
@@ -862,7 +754,7 @@ function createFigure(material, hairMat, jointMat) {
     wingLR,
   };
 
-  return { hips, nodes, bodyMesh, neckMesh, headMesh, scalp, hair, strands, fingers };
+  return { hips, nodes, bodyMesh, neckMesh, headMesh, scalp, hair, fingers };
 }
 
 function stillLimbPoses() {
@@ -1090,7 +982,6 @@ export function createAngel(marble) {
   const stack = new THREE.Vector3();
   const quat = new THREE.Quaternion();
   const scale = new THREE.Vector3(1, 1, 1);
-  const hairPoint = new THREE.Vector3();
   const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   let calmMotion = 1;
   let disposed = false;
@@ -1136,30 +1027,9 @@ export function createAngel(marble) {
   }
 
   function updateHair(time, blend, motion) {
-    const geo = figure.hair.children[0].geometry;
-    figure.strands.forEach((strand, index) => {
-      const base = strand.base;
-      const current = strand.scratch;
-      for (let i = 0; i < base.length; i++) {
-        const t = base.length === 1 ? 0 : i / (base.length - 1);
-        const settledX = base[i].x * (1 - t * 0.62);
-        const settledY = base[i].y - t * 0.2;
-        const settledZ = THREE.MathUtils.lerp(base[i].z, -0.1, t * 0.7);
-        const flutter = Math.sin(time * 1.15 + index * 0.7 + t * 2.4) * 0.018 * t * (1 - blend * 0.55) * motion;
-        const flutter2 = Math.sin(time * 0.45 + index) * 0.012 * t * motion;
-        hairPoint.set(
-          THREE.MathUtils.lerp(base[i].x, settledX, blend) + flutter,
-          THREE.MathUtils.lerp(base[i].y, settledY, blend) + flutter2 * 0.4,
-          THREE.MathUtils.lerp(base[i].z, settledZ, blend) + flutter * 0.35,
-        );
-        current[i].copy(hairPoint);
-      }
-      writeRibbon(geo, current, strand.width, strand.up, strand.vertex, strand.curve);
-    });
-    geo.computeVertexNormals();
-    const wind = (1 - blend * 0.7) * motion;
-    figure.hair.rotation.z = Math.sin(time * 0.7) * 0.025 * wind;
-    figure.hair.rotation.x = Math.sin(time * 0.5 + 0.4) * 0.015 * wind;
+    const wind = (1 - blend * 0.65) * motion;
+    figure.hair.rotation.z = Math.sin(time * 0.55) * 0.03 * wind;
+    figure.hair.rotation.y = Math.sin(time * 0.4 + 0.6) * 0.025 * wind;
   }
 
   function updateFeathers(time, blend) {

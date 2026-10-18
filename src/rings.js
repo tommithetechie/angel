@@ -5,19 +5,19 @@ const GLYPHS_PER_LOOP = 48;
 
 const RING_SPECS = [
   {
-    radius: 1.05,
-    half: 0.062,
-    position: [0.04, 1.95, -0.22],
-    tiltX: -0.68,
-    tiltZ: 0.38,
+    radius: 1.55,
+    half: 0.055,
+    position: [0.02, 1.82, -0.95],
+    tiltX: -0.42,
+    tiltZ: 0.28,
     spin: 0.07,
   },
   {
-    radius: 1.28,
-    half: 0.07,
-    position: [-0.02, 0.18, 0.06],
-    tiltX: -0.78,
-    tiltZ: -0.46,
+    radius: 1.42,
+    half: 0.06,
+    position: [-0.04, 0.42, -0.78],
+    tiltX: -0.55,
+    tiltZ: -0.34,
     spin: -0.046,
   },
 ];
@@ -553,8 +553,8 @@ export function createRings() {
 
   const halo = new THREE.Group();
   halo.name = 'halo';
-  halo.position.set(0, 2.46, -0.42);
-  halo.scale.setScalar(0.28);
+  halo.position.set(0, 2.52, -0.72);
+  halo.scale.setScalar(0.52);
   halo.rotation.x = -0.08;
   rig.add(halo);
 

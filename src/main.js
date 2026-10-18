@@ -31,21 +31,21 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x040308, 1);
+renderer.setClearColor(0x010102, 1);
 renderer.toneMapping = THREE.AgXToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.58;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.domElement.setAttribute('aria-label', 'Seraphim, a marble figure in a dark reflective space');
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x040308);
-scene.fog = new THREE.FogExp2(0x09080d, 0.012);
+scene.background = new THREE.Color(0x010102);
+scene.fog = new THREE.FogExp2(0x020203, 0.0032);
 
-const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.12, 140);
-const lookAt = new THREE.Vector3(0.03, 1.52, 0);
-const introFrom = new THREE.Vector3(0.55, 1.82, 15.2);
-const introTo = new THREE.Vector3(0.12, 1.26, 9.35);
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.12, 180);
+const lookAt = new THREE.Vector3(0, 1.15, 0);
+const introFrom = new THREE.Vector3(0.35, 1.55, 28);
+const introTo = new THREE.Vector3(0.06, 1.15, 20);
 camera.position.copy(settle ? introTo : introFrom);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -56,8 +56,8 @@ controls.rotateSpeed = 0.55;
 controls.zoomSpeed = 0.65;
 controls.enablePan = true;
 controls.screenSpacePanning = false;
-controls.minDistance = 3.6;
-controls.maxDistance = 18;
+controls.minDistance = 3.2;
+controls.maxDistance = 34;
 controls.minPolarAngle = 0.42;
 controls.maxPolarAngle = Math.PI * 0.58;
 controls.autoRotateSpeed = 0.38;
@@ -70,7 +70,7 @@ if (heroPlace) applyHeroCamera(heroPlace);
 
 const environment = createEnvironment(renderer, quality);
 scene.environment = environment.texture;
-scene.environmentIntensity = 1.05;
+scene.environmentIntensity = 0.36;
 
 const lights = createLights();
 scene.add(
@@ -323,10 +323,11 @@ function numberParam(name, fallback) {
 
 function readHeroView() {
   const requested = params.get('view');
-  const view = requested === 'side' || requested === 'back' ? requested : 'front';
-  const dist = numberParam('dist', 7.2);
-  const fov = numberParam('fov', 28);
-  const lookY = numberParam('look', 1.05);
+  const view = requested === 'side' || requested === 'back' || requested === 'close' ? requested : 'front';
+  const close = view === 'close';
+  const dist = numberParam('dist', close ? 9.6 : 20);
+  const fov = numberParam('fov', 30);
+  const lookY = numberParam('look', close ? 1.22 : 1.15);
   const look = new THREE.Vector3(0, lookY, 0);
   const position = new THREE.Vector3();
   if (view === 'side') position.set(dist, lookY, 0);
@@ -377,34 +378,34 @@ function tagLight(light, color0, intensity0, color1, intensity1) {
 }
 
 function createLights() {
-  const hemi = new THREE.HemisphereLight(0x1a1c24, 0x070605, 0.22);
-  hemi.userData.sky0 = new THREE.Color(0x1a1c24);
-  hemi.userData.sky1 = new THREE.Color(0x1c4650);
-  hemi.userData.ground0 = new THREE.Color(0x070605);
-  hemi.userData.ground1 = new THREE.Color(0x062028);
-  hemi.userData.i0 = 0.22;
-  hemi.userData.i1 = 0.48;
+  const hemi = new THREE.HemisphereLight(0x121318, 0x050404, 0.12);
+  hemi.userData.sky0 = new THREE.Color(0x121318);
+  hemi.userData.sky1 = new THREE.Color(0x14343c);
+  hemi.userData.ground0 = new THREE.Color(0x050404);
+  hemi.userData.ground1 = new THREE.Color(0x04161c);
+  hemi.userData.i0 = 0.12;
+  hemi.userData.i1 = 0.28;
 
-  const key = tagLight(new THREE.DirectionalLight(0xfff4ea, 1.22), 0xfff4ea, 1.22, 0xd5e4ea, 0.62);
+  const key = tagLight(new THREE.DirectionalLight(0xfff4ea, 0.78), 0xfff4ea, 0.78, 0xd5e4ea, 0.42);
   key.position.set(-2.1, 4.4, 5.4);
 
-  const rim = tagLight(new THREE.DirectionalLight(0xd5e2ff, 0.92), 0xd5e2ff, 0.92, 0x8eb8c4, 0.32);
+  const rim = tagLight(new THREE.DirectionalLight(0xd5e2ff, 0.52), 0xd5e2ff, 0.52, 0x8eb8c4, 0.22);
   rim.position.set(3.4, 3.6, -3.8);
 
-  const fill = tagLight(new THREE.DirectionalLight(0x9aafc8, 0.28), 0x9aafc8, 0.28, 0x7f9aa6, 0.42);
+  const fill = tagLight(new THREE.DirectionalLight(0x9aafc8, 0.16), 0x9aafc8, 0.16, 0x7f9aa6, 0.24);
   fill.position.set(0.8, 1.3, 5.2);
 
-  const warmA = tagLight(new THREE.PointLight(0xffc56a, 2.55, 7.2, 2), 0xffc56a, 2.55, 0xffc56a, 0.28);
+  const warmA = tagLight(new THREE.PointLight(0xffc56a, 1.05, 7.2, 2), 0xffc56a, 1.05, 0xffc56a, 0.16);
   warmA.position.set(1.25, 1.72, 1.65);
 
-  const warmB = tagLight(new THREE.PointLight(0xffb25a, 1.45, 7.5, 2), 0xffb25a, 1.45, 0xffb25a, 0.1);
+  const warmB = tagLight(new THREE.PointLight(0xffb25a, 0.55, 7.5, 2), 0xffb25a, 0.55, 0xffb25a, 0.06);
   warmB.position.set(-1.45, 0.72, 1.55);
 
-  const moonDir = tagLight(new THREE.DirectionalLight(0xe7eeff, 0), 0xe7eeff, 0, 0xe7eeff, 0.85);
+  const moonDir = tagLight(new THREE.DirectionalLight(0xe7eeff, 0), 0xe7eeff, 0, 0xe7eeff, 0.36);
   moonDir.position.set(3.15, 3.45, -6.1);
   moonDir.target.position.set(0, 1.3, 0);
 
-  const moonFill = tagLight(new THREE.PointLight(0xd5e4ff, 0, 16, 2), 0xd5e4ff, 0, 0xd5e4ff, 3.4);
+  const moonFill = tagLight(new THREE.PointLight(0xd5e4ff, 0, 16, 2), 0xd5e4ff, 0, 0xd5e4ff, 1.1);
   moonFill.position.set(2.2, 3.1, -1.2);
 
   return { hemi, key, rim, fill, warmA, warmB, moonDir, moonFill };
@@ -446,8 +447,8 @@ function createMoon() {
   const moon = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
   moon.name = 'moon';
   moon.position.set(3.15, 3.45, -6.1);
-  moon.scale.setScalar(8.4);
-  moon.userData.stillIntensity = 1.85;
+  moon.scale.setScalar(3.4);
+  moon.userData.stillIntensity = 0.62;
   moon.renderOrder = 1;
   return moon;
 }

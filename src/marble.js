@@ -224,34 +224,22 @@ function paintStone(rand) {
   const data = image.data;
   const warpN = makeNoise(rand, 16);
   const cloudN = makeNoise(rand, 32);
-  const ivory = [247, 244, 237];
-  const cream = [233, 227, 216];
-  const mist = [206, 208, 212];
-  const gray = [158, 162, 170];
-  const slate = [92, 96, 104];
-  const ink = [48, 50, 56];
+  const ivory = [250, 248, 244];
+  const cream = [242, 236, 226];
 
   for (let y = 0; y < LOW; y++) {
     const v = y / LOW;
     for (let x = 0; x < LOW; x++) {
       const u = x / LOW;
-      const wx = fbm(warpN, u, v, 4);
-      const wy = fbm(warpN, u + 5.2, v + 1.3, 4);
-      const uu = u + (wx - 0.5) * 0.42;
-      const vv = v + (wy - 0.5) * 0.42;
-      const cloud = fbm(cloudN, uu * 1.25, vv * 1.35, 5);
-      const fine = fbm(cloudN, uu * 3.4 + 2.0, vv * 3.1, 3);
-      const flow = uu * 1.55 + (wx - 0.5) * 1.15 + cloud * 0.22;
-      const band = Math.abs(Math.sin(flow * Math.PI * 2));
-      const vein = smoothstep(0.34, 0.02, band);
-      const thread = Math.abs(Math.sin((vv * 4.2 + wy * 2.4) * Math.PI * 2));
-      const vein2 = smoothstep(0.1, 0.0, thread) * (0.35 + fine * 0.45);
-
-      let rgb = mix3(ivory, cream, cloud * 0.72);
-      rgb = mix3(rgb, mist, Math.max(0, fine - 0.42) * 0.55);
-      rgb = mix3(rgb, gray, vein * 0.62);
-      rgb = mix3(rgb, slate, vein * vein * 0.5 + vein2 * 0.42);
-      rgb = mix3(rgb, ink, vein2 * vein * 0.35);
+      const wx = fbm(warpN, u, v, 3);
+      const wy = fbm(warpN, u + 5.2, v + 1.3, 3);
+      const uu = u + (wx - 0.5) * 0.08;
+      const vv = v + (wy - 0.5) * 0.08;
+      const cloud = fbm(cloudN, uu * 1.1, vv * 1.1, 3);
+      const fine = fbm(cloudN, uu * 4.2 + 2.0, vv * 3.8, 2);
+      let rgb = mix3(ivory, cream, cloud * 0.22);
+      const speckle = (fine - 0.5) * 3.5;
+      rgb = [rgb[0] + speckle, rgb[1] + speckle * 0.85, rgb[2] + speckle * 0.6];
 
       const o = (y * LOW + x) * 4;
       data[o] = clampByte(rgb[0]);
@@ -268,14 +256,6 @@ function paintStone(rand) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(low, 0, 0, SIZE, SIZE);
-
-  const soft = makePaths(rand, 7, px(70), 0.85, 0.12);
-  strokeWrapped(ctx, soft, 'rgba(132,136,144,0.20)', px(22));
-  strokeWrapped(ctx, soft, 'rgba(74,78,86,0.30)', px(6));
-
-  const threads = makePaths(rand, 16, px(46), 1.05, 0.2);
-  strokeWrapped(ctx, threads, 'rgba(58,62,70,0.45)', px(3.2));
-  strokeWrapped(ctx, threads, 'rgba(22,24,28,0.82)', px(1.25));
 
   return { color, ctx };
 }
@@ -344,22 +324,22 @@ function buildCrackle(rand, stone) {
         }
       }
 
-      const edge = Math.sqrt(d2) - Math.sqrt(d1);
-      const lo = i1 < i2 ? i1 : i2;
-      const hi = i1 < i2 ? i2 : i1;
-      const fade = hash01(lo + 3, hi * 17 + 1);
-      const strength = smoothstep(0.12, 0.48, fade);
-      const isGold = fade > 0.6;
-      const crack = smoothstep(px(5.4), px(0.35), edge) * (0.28 + 0.72 * strength);
-      const gold = isGold ? smoothstep(px(3.15), px(0.2), edge) * strength : 0;
-      const goldCore = isGold ? smoothstep(px(1.35), px(0.12), edge) * strength : 0;
-      const glow = isGold ? smoothstep(px(8.2), px(0.6), edge) * strength : 0;
+      // Voronoi cracks used to tile the stone. The polished look keeps the
+      // field clean; a few hero veins are painted afterwards.
+      const crack = 0;
+      const gold = 0;
+      const goldCore = 0;
+      const glow = 0;
+      const softVein = 0;
+      void ivoryLum;
+      void d1;
+      void d2;
+      void i1;
+      void i2;
 
       const br = base[o];
       const bg = base[o + 1];
       const bb = base[o + 2];
-      const lum = (0.299 * br + 0.587 * bg + 0.114 * bb) / 255;
-      const softVein = smoothstep(ivoryLum, 0.55, lum);
 
       let r = br;
       let g = bg;
@@ -382,10 +362,10 @@ function buildCrackle(rand, stone) {
       color[o + 3] = 255;
 
       const grain = hash01(x, y);
-      let roughV = 38 + grain * 16 + softVein * 22;
+      let roughV = 104 + grain * 18 + softVein * 8;
       roughV = mix(roughV, 176, Math.min(1, crack * (1 - gold)));
-      roughV = mix(roughV, 48 + grain * 10, gold);
-      roughV = mix(roughV, 30, goldCore);
+      roughV = mix(roughV, 72 + grain * 8, gold);
+      roughV = mix(roughV, 58, goldCore);
       const rb = clampByte(roughV);
       rough[o] = rough[o + 1] = rough[o + 2] = rb;
       rough[o + 3] = 255;
@@ -402,12 +382,7 @@ function buildCrackle(rand, stone) {
       }
       emissive[o + 3] = 255;
 
-      const micro = hash01(x * 3 + 11, y * 5 + 2);
-      let h = 0.58 + (micro - 0.5) * 0.045 + (grain - 0.5) * 0.02;
-      h -= softVein * 0.07;
-      h -= crack * 0.2;
-      h += goldCore * 0.11;
-      height[row + x] = h;
+      height[row + x] = 0.55;
 
       if (gold > 0.25) {
         let ax = sitesX[i1];
@@ -430,19 +405,17 @@ function buildCrackle(rand, stone) {
 }
 
 function layHeroVeins(rand, colorCtx, maps) {
-  const heroes = makePaths(rand, 8, px(58), 0.72, 0.28);
-  strokeWrapped(colorCtx, heroes, 'rgba(8,8,10,0.95)', px(8));
-  strokeWrapped(colorCtx, heroes, '#8a5814', px(4.6));
-  strokeWrapped(colorCtx, heroes, '#d9a23a', px(2.5));
-  strokeWrapped(colorCtx, heroes, '#f0c15a', px(1.05));
+  const heroes = makePaths(rand, 3, px(36), 0.42, 0.16);
+  strokeWrapped(colorCtx, heroes, '#b8882e', px(1.35));
+  strokeWrapped(colorCtx, heroes, '#e4bc62', px(0.55));
 
   const mask = document.createElement('canvas');
   mask.width = mask.height = SIZE;
   const maskCtx = mask.getContext('2d', { willReadFrequently: true });
   maskCtx.globalCompositeOperation = 'lighter';
-  strokeWrapped(maskCtx, heroes, 'rgb(255,0,0)', px(8));
-  strokeWrapped(maskCtx, heroes, 'rgb(0,255,0)', px(9));
-  strokeWrapped(maskCtx, heroes, 'rgb(0,0,255)', px(3.1));
+  strokeWrapped(maskCtx, heroes, 'rgb(255,0,0)', px(2.1));
+  strokeWrapped(maskCtx, heroes, 'rgb(0,255,0)', px(2.4));
+  strokeWrapped(maskCtx, heroes, 'rgb(0,0,255)', px(0.9));
 
   const phaseCanvas = document.createElement('canvas');
   phaseCanvas.width = phaseCanvas.height = SIZE;
@@ -639,9 +612,7 @@ float metalnessFactor = metalness;
 `;
 
 const BODY_NORMAL = /* glsl */ `
-  // The albedo's luminance used to push the normal around. On the body that
-  // reads as a hammered surface, so the mix stays off. Cracks remain the
-  // painted normal map.
+  // Color-driven bump is not applied. The stone stays smooth.
 `;
 
 const BODY_EMISSIVE = /* glsl */ `
@@ -823,7 +794,7 @@ function bindShader(material, uniforms, projectFeathers) {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v5' : 'marble-body-v6');
+  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v6' : 'marble-body-v7');
   if (!projectFeathers) {
     material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
       const project = uvSpan(geometry) > 0.75 ? 1 : 0;
@@ -846,23 +817,23 @@ function applySurface(material, textures) {
   material.emissive.set(0xffffff);
   material.roughness = 1;
   material.metalness = 1;
-  material.normalScale.set(1.12, 1.12);
-  material.clearcoat = 1;
-  material.clearcoatRoughness = 0.05;
-  material.envMapIntensity = 1.2;
-  material.ior = 1.5;
-  material.specularIntensity = 1;
+  material.normalScale.set(0, 0);
+  material.clearcoat = 0.32;
+  material.clearcoatRoughness = 0.22;
+  material.envMapIntensity = 0.55;
+  material.ior = 1.45;
+  material.specularIntensity = 0.55;
   material.specularColor.set(0xfff6ee);
-  material.sheen = 0.05;
-  material.sheenRoughness = 0.62;
+  material.sheen = 0.04;
+  material.sheenRoughness = 0.55;
   material.sheenColor.set(0xfff4ea);
-  material.emissiveIntensity = 1.15;
-  material.userData.env0 = 1.2;
-  material.userData.env1 = 0.92;
-  material.userData.em0 = 1.15;
-  material.userData.em1 = 0.22;
-  material.userData.sheen = 0.05;
-  material.userData.coat = 0.045;
+  material.emissiveIntensity = 0.32;
+  material.userData.env0 = 0.55;
+  material.userData.env1 = 0.4;
+  material.userData.em0 = 0.32;
+  material.userData.em1 = 0.08;
+  material.userData.sheen = 0.04;
+  material.userData.coat = 0.22;
   material.dithering = true;
 }
 
@@ -930,16 +901,16 @@ export function createMarble(renderer) {
     vertexColors: true,
   });
   applySurface(wing, textures);
-  wing.clearcoat = 0.42;
-  wing.envMapIntensity = 0.62;
-  wing.emissiveIntensity = 0.7;
-  wing.sheen = 0.18;
-  wing.userData.env0 = 0.62;
-  wing.userData.env1 = 0.45;
-  wing.userData.em0 = 0.7;
-  wing.userData.em1 = 0.12;
-  wing.userData.sheen = 0.18;
-  wing.userData.coat = 0.12;
+  wing.clearcoat = 0.22;
+  wing.envMapIntensity = 0.4;
+  wing.emissiveIntensity = 0.26;
+  wing.sheen = 0.08;
+  wing.userData.env0 = 0.4;
+  wing.userData.env1 = 0.28;
+  wing.userData.em0 = 0.26;
+  wing.userData.em1 = 0.06;
+  wing.userData.sheen = 0.08;
+  wing.userData.coat = 0.28;
   bindShader(wing, uniforms, true);
 
   materials.push(body, wing);

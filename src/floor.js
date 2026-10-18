@@ -354,9 +354,9 @@ export function createFloor(scene, quality, contact) {
   }
 
   const deepRadiant = new THREE.Color(0x040308);
-  const deepStill = new THREE.Color(0x0a3c48);
-  const shallowRadiant = new THREE.Color(0x06050a);
-  const shallowStill = new THREE.Color(0x2a8d98);
+  const deepStill = new THREE.Color(0x06141c);
+  const shallowRadiant = new THREE.Color(0x040306);
+  const shallowStill = new THREE.Color(0x0a2c34);
   const glowRadiant = new THREE.Color(0xc4a36a);
   const glowStill = new THREE.Color(0xb7e4e2);
 

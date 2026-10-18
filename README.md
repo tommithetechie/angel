@@ -15,7 +15,7 @@ npm run dev
 
 The dev server uses the GitHub Pages base path, so the scene is at `/angel/`.
 
-`?hero` (or `?capture`) is a dev framing aid. It locks the camera, hides the caption, and freezes animation time so a screenshot can be taken again and match. `form=still` selects the quiet form. `view=side` and `view=back` hold the same distance from the side and the back. The public scene still eases in and drifts.
+`?hero` (or `?capture`) is a dev framing aid. It locks the camera, hides the caption, and freezes animation time so a screenshot can be taken again and match. `form=still` selects the quiet form. `view=side` and `view=back` hold the same distance from the side and the back. `view=close` frames the body and wings. The public scene still eases in and drifts.
 
 ## Build
 

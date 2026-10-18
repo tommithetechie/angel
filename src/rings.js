@@ -423,7 +423,33 @@ function createMandalaTexture() {
   return tex;
 }
 
-function createRing(spec, crispMat, glowMat, segments) {
+const shaftVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const shaftFragment = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uFade;
+  uniform vec3 uColor;
+  void main() {
+    float around = vUv.x;
+    float along = vUv.y;
+    float ray = sin(around * 54.0 + uTime * 0.28 + sin(around * 11.0 + uTime * 0.17) * 1.8);
+    ray = smoothstep(0.25, 0.98, ray * 0.5 + 0.5);
+    float streak = pow(ray, 2.8);
+    float fade = pow(along, 1.35) * smoothstep(0.0, 0.14, along);
+    float alpha = (streak * 0.62 + 0.05) * fade * uFade;
+    if (alpha < 0.012) discard;
+    gl_FragColor = vec4(uColor, alpha);
+  }
+`;
+
+function createRing(spec, crispMat, glowMat, goldMat, segments, low) {
   const holder = new THREE.Group();
   holder.position.set(spec.position[0], spec.position[1], spec.position[2]);
   holder.rotation.x = spec.tiltX;
@@ -443,7 +469,13 @@ function createRing(spec, crispMat, glowMat, segments) {
   glow.position.z = -0.004;
   glow.renderOrder = 1;
   crisp.renderOrder = 2;
-  spin.add(glow, crisp);
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(spec.radius, Math.max(0.007, spec.radius * 0.0095), low ? 8 : 12, low ? 72 : 112),
+    goldMat,
+  );
+  torus.name = 'gold-band';
+  torus.position.z = -0.012;
+  spin.add(torus, glow, crisp);
 
   return { holder, spin, speed: spec.spin, tiltX: spec.tiltX, tiltZ: spec.tiltZ, crisp, glow };
 }
@@ -498,9 +530,23 @@ export function createRings() {
     fog: true,
   });
 
+  const goldMat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color().setRGB(1, 0.716, 0.291),
+    metalness: 1,
+    roughness: 0.17,
+    envMapIntensity: 1.35,
+    clearcoat: 0.2,
+    clearcoatRoughness: 0.16,
+    emissive: new THREE.Color().setRGB(0.22, 0.1, 0.02),
+    emissiveIntensity: 0.28,
+    transparent: true,
+    opacity: 1,
+    depthWrite: true,
+  });
+
   const segments = low ? 160 : 288;
   const rings = RING_SPECS.map((spec) => {
-    const ring = createRing(spec, crispMat, glowMat, segments);
+    const ring = createRing(spec, crispMat, glowMat, goldMat, segments, low);
     rig.add(ring.holder);
     return ring;
   });
@@ -560,6 +606,32 @@ export function createRings() {
   );
   halo.add(haloPlane, inner, core, outer);
 
+  let shaft = null;
+  if (!low) {
+    const shaftMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      fog: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uFade: { value: 1 },
+        uColor: { value: new THREE.Color().setRGB(1.15, 0.72, 0.32) },
+      },
+      vertexShader: shaftVertex,
+      fragmentShader: shaftFragment,
+    });
+    shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 1.15, 2.35, 24, 1, true), shaftMat);
+    shaft.name = 'halo-shaft';
+    shaft.position.y = -1.02;
+    shaft.frustumCulled = false;
+    shaft.renderOrder = 1;
+    halo.add(shaft);
+  }
+
   const mandala = new THREE.Mesh(
     new THREE.PlaneGeometry(3.35, 3.35),
     new THREE.MeshBasicMaterial({
@@ -589,6 +661,12 @@ export function createRings() {
       ring.glow.visible = showGold;
     }
     for (const mat of haloMats) mat.opacity = gold;
+    goldMat.opacity = gold;
+    goldMat.depthWrite = gold > 0.65;
+    if (shaft) {
+      shaft.material.uniforms.uFade.value = gold;
+      shaft.visible = gold > 0.03;
+    }
     mandala.material.opacity = blend * 0.5;
     mandala.visible = blend > 0.02;
     halo.visible = showGold;
@@ -607,6 +685,7 @@ export function createRings() {
       mandala.rotation.z = -time * 0.018 * blend;
       const pulse = 0.9 + 0.1 * Math.sin(time * 0.8);
       glowMat.uniforms.uFade.value = (1 - blend) * pulse;
+      if (shaft) shaft.material.uniforms.uTime.value = time;
     },
     setForm(form, t) {
       const next = stillWeight(form, t);

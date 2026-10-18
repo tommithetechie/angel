@@ -1,7 +1,6 @@
 import './ui.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -12,6 +11,9 @@ import { createRings } from './rings.js';
 import { createParticles } from './particles.js';
 import { createFloor } from './floor.js';
 import { createDebrisModule, createForms } from './forms.js';
+import { createEnvironment } from './environment.js';
+import { createContact } from './contact.js';
+import { createMoonGlow } from './glow.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const params = new URLSearchParams(window.location.search);
@@ -27,8 +29,8 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x040308, 1);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.74;
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.domElement.setAttribute('aria-label', 'Seraphim, a marble figure in a dark reflective space');
 document.body.appendChild(renderer.domElement);
@@ -58,18 +60,9 @@ controls.maxPolarAngle = Math.PI * 0.58;
 controls.autoRotateSpeed = 0.38;
 controls.update();
 
-const pmrem = new THREE.PMREMGenerator(renderer);
-const room = new RoomEnvironment();
-// Keep the target. fromScene's color texture is scene.environment; dropping
-// the target would orphan its depth buffer without a dispose().
-// 0.04 is the largest blur that stays inside PMREMGenerator's 20-sample cap
-// at the 256px cube. A wider sigma logs a clip warning and then clamps.
-const envTarget = pmrem.fromScene(room, 0.04);
-scene.environment = envTarget.texture;
-scene.userData.environmentTarget = envTarget;
-scene.environmentIntensity = 0.78;
-pmrem.dispose();
-room.dispose();
+const environment = createEnvironment(renderer, quality);
+scene.environment = environment.texture;
+scene.environmentIntensity = 1.05;
 
 const lights = createLights();
 scene.add(
@@ -100,9 +93,14 @@ if (debris?.group) {
   modules.push(debris);
 }
 
-const floor = createFloor(scene, quality);
+const contact = createContact(renderer, angel.group, quality);
+const floor = createFloor(scene, quality, contact);
 floor.setMoonDirection(moon.position);
 scene.add(floor.group);
+
+const moonGlow = createMoonGlow(moon, quality);
+scene.add(moonGlow.group);
+modules.push(environment, moonGlow, contact);
 
 const composer = new EffectComposer(renderer);
 const composerSamples = quality.low ? 0 : 2;
@@ -226,7 +224,6 @@ function release() {
   callDispose(marble);
   composer.dispose();
   controls.dispose();
-  envTarget.dispose();
   moon.geometry.dispose();
   moon.material.dispose();
   renderer.dispose();
@@ -289,6 +286,7 @@ function resize() {
   grade.uniforms.uChroma.value = next.chroma;
   grade.uniforms.uGrain.value = next.grain;
   grade.uniforms.uVignette.value = next.vignette;
+  if (typeof floor.setDetail === 'function') floor.setDetail(next.low);
   if (!sameBuffer) {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();

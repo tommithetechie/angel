@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Effects harness</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #07060a;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #bar {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        display: flex;
+        gap: 8px;
+        z-index: 2;
+        font: 12px/1 system-ui, sans-serif;
+      }
+      button {
+        background: rgba(12, 10, 14, 0.72);
+        color: #f3e6cf;
+        border: 1px solid rgba(232, 196, 122, 0.45);
+        border-radius: 999px;
+        padding: 7px 12px;
+        cursor: pointer;
+      }
+      button[aria-pressed='true'] {
+        background: rgba(232, 196, 122, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <button type="button" id="radiant" aria-pressed="true">Radiant</button>
+      <button type="button" id="still" aria-pressed="false">Still</button>
+    </div>
+    <script>
+      window.addEventListener('error', (event) => {
+        const note = document.createElement('pre');
+        note.id = 'boot-error';
+        note.textContent = String(event.error?.stack || event.message || event.error || 'error');
+        note.style.cssText =
+          'position:fixed;inset:0;color:#ffb4a8;background:#14080c;z-index:20;font:14px/1.45 ui-monospace,monospace;padding:16px;white-space:pre-wrap';
+        document.body.appendChild(note);
+      });
+    </script>
+    <script type="module" src="/dev/effects.js"></script>
+  </body>
+</html>

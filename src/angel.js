@@ -377,7 +377,12 @@ function stampUv(mesh) {
 }
 
 function attach(parent, geo, material, position, name) {
-  const mesh = new THREE.Mesh(geo, material);
+  let geometry = geo;
+  if (geo.userData.template) {
+    geometry = geo.clone();
+    geometry.userData = { ...geo.userData, template: false };
+  }
+  const mesh = new THREE.Mesh(geometry, material);
   if (position) mesh.position.set(position[0], position[1], position[2]);
   mesh.name = name;
   mesh.castShadow = false;
@@ -449,6 +454,19 @@ const FORE_GEO = limbGeometry(
 );
 const FOOT_GEO = footGeometry();
 
+for (const geo of [THIGH_GEO, SHIN_GEO, UPPER_GEO, FORE_GEO, FOOT_GEO]) {
+  geo.userData.template = true;
+}
+
+// Phones and narrow windows get fewer feather instances. A wide desktop,
+// including a portrait preview, keeps the full wing.
+function preferLight() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  const narrow = window.matchMedia('(max-width: 760px), (max-height: 520px)').matches;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  return narrow || (coarse && window.matchMedia('(max-width: 1100px)').matches);
+}
+
 function featherEnvelope(kind, t, rowF, layerF) {
   const layer = THREE.MathUtils.lerp(1, 0.32, Math.pow(layerF, 0.85));
   if (kind === 'upper') {
@@ -471,7 +489,10 @@ function featherEnvelope(kind, t, rowF, layerF) {
   return base * row * layer;
 }
 
-function makeWingSpecs() {
+function makeWingSpecs(light) {
+  const along = (n) => (light ? Math.max(10, Math.round(n * 0.75)) : n);
+  const rows = (n) => (light ? Math.max(3, n - 1) : n);
+  const layers = light ? 2 : 3;
   const specs = [];
   for (const side of [1, -1]) {
     const s = side;
@@ -480,9 +501,9 @@ function makeWingSpecs() {
       kind: 'upper',
       bone: s > 0 ? 'wingUL' : 'wingUR',
       side: s,
-      along: 18,
-      rows: 4,
-      layers: 3,
+      along: along(18),
+      rows: rows(4),
+      layers,
       flutter: 0.055,
       open: {
         points: [v3(0, 0, 0), v3(0.22 * s, 0.3, -0.05), v3(0.06 * s, 1.05, -0.01), v3(-0.11 * s, 1.6, 0.03)],
@@ -508,9 +529,9 @@ function makeWingSpecs() {
       kind: 'middle',
       bone: s > 0 ? 'wingML' : 'wingMR',
       side: s,
-      along: 17,
-      rows: 4,
-      layers: 3,
+      along: along(17),
+      rows: rows(4),
+      layers,
       flutter: 0.07,
       open: {
         points: [v3(0, 0, 0), v3(0.28 * s, 0.1, -0.05), v3(0.55 * s, 0.22, -0.02), v3(0.78 * s, 0.34, 0.02)],
@@ -536,9 +557,9 @@ function makeWingSpecs() {
       kind: 'lower',
       bone: s > 0 ? 'wingLL' : 'wingLR',
       side: s,
-      along: 15,
-      rows: 5,
-      layers: 3,
+      along: along(15),
+      rows: rows(5),
+      layers,
       flutter: 0.085,
       lenBias: s < 0 ? 1.06 : 1,
       open: {
@@ -589,12 +610,25 @@ function buildRecipes(specs, rand) {
   return recipes;
 }
 
-function writeRibbon(geo, points, width, upHint) {
-  const curve = new THREE.CatmullRomCurve3(points);
+function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return false;
+  }
+  let span = 0;
+  for (let i = 1; i < points.length; i++) span += points[i].distanceTo(points[i - 1]);
+  if (span < 1e-4) return false;
+
+  if (!curve) curve = new THREE.CatmullRomCurve3(points);
+  else {
+    for (let i = 0; i < points.length; i++) curve.points[i].copy(points[i]);
+    curve.needsUpdate = true;
+  }
+
   const steps = geo.userData.steps;
   const pos = geo.attributes.position;
   const up = upHint || _up;
-  let k = 0;
+  let k = vertexOffset;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const p = curve.getPointAt(t);
@@ -607,36 +641,51 @@ function writeRibbon(geo, points, width, upHint) {
     pos.setXYZ(k++, p.x - _x.x * w, p.y - _x.y * w, p.z - _x.z * w);
   }
   pos.needsUpdate = true;
-  geo.computeVertexNormals();
+  return true;
 }
 
-function createRibbon(points, width, up, material) {
+function createHair(material) {
   const steps = 14;
-  const positions = new Float32Array((steps + 1) * 2 * 3);
-  const uvs = new Float32Array((steps + 1) * 2 * 2);
+  const stride = (steps + 1) * 2;
+  const positions = new Float32Array(HAIR.length * stride * 3);
+  const uvs = new Float32Array(HAIR.length * stride * 2);
   const indices = [];
-  for (let i = 0; i <= steps; i++) {
-    uvs[i * 4] = 0;
-    uvs[i * 4 + 1] = i / steps;
-    uvs[i * 4 + 2] = 1;
-    uvs[i * 4 + 3] = i / steps;
-    if (i < steps) {
-      const a = i * 2;
-      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  const strands = HAIR.map((spec, index) => {
+    const base = spec.pts.map((p) => v3(p[0], p[1], p[2]));
+    const vertex = index * stride;
+    for (let i = 0; i <= steps; i++) {
+      const o = (vertex + i * 2) * 2;
+      uvs[o] = 0;
+      uvs[o + 1] = i / steps;
+      uvs[o + 2] = 1;
+      uvs[o + 3] = i / steps;
+      if (i < steps) {
+        const a = vertex + i * 2;
+        indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
     }
-  }
+    return {
+      base,
+      width: spec.w,
+      up: v3(spec.up[0], spec.up[1], spec.up[2]),
+      vertex,
+      scratch: base.map(() => new THREE.Vector3()),
+      curve: new THREE.CatmullRomCurve3(base.map((p) => p.clone())),
+    };
+  });
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.userData.steps = steps;
-  writeRibbon(geo, points, width, up);
+  for (const strand of strands) {
+    writeRibbon(geo, strand.base, strand.width, strand.up, strand.vertex, strand.curve);
+  }
+  geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, material);
+  mesh.name = 'hairMesh';
   mesh.frustumCulled = false;
-  mesh.userData.base = points.map((p) => p.clone());
-  mesh.userData.width = width;
-  mesh.userData.up = up.clone();
-  return mesh;
+  return { mesh, strands };
 }
 
 const HAIR = [
@@ -656,7 +705,7 @@ const HAIR = [
   { w: 0.02, up: [0, 1, 0], pts: [[0.01, 0.16, 0.04], [-0.05, 0.22, 0.1], [-0.12, 0.16, 0.14], [-0.16, 0.06, 0.1]] },
 ];
 
-function createFigure(material, hairMat) {
+function createFigure(material, hairMat, jointMat) {
   const hips = new THREE.Group();
   hips.name = 'hips';
 
@@ -692,7 +741,7 @@ function createFigure(material, hairMat) {
     ],
     28,
   );
-  const neckMesh = attach(neck, neckGeo, material, null, 'neck');
+  const neckMesh = attach(neck, neckGeo, jointMat, null, 'neck');
 
   const head = bone(neck, 'head', [0, 0.145, 0.01]);
   const headGeo = sculptHead(new THREE.SphereGeometry(0.145, 40, 28));
@@ -707,13 +756,9 @@ function createFigure(material, hairMat) {
   const hair = new THREE.Group();
   hair.name = 'hair';
   head.add(hair);
-  const strands = [];
-  for (const spec of HAIR) {
-    const pts = spec.pts.map((p) => v3(p[0], p[1], p[2]));
-    const ribbon = createRibbon(pts, spec.w, v3(spec.up[0], spec.up[1], spec.up[2]), hairMat);
-    hair.add(ribbon);
-    strands.push(ribbon);
-  }
+  const builtHair = createHair(hairMat);
+  hair.add(builtHair.mesh);
+  const strands = builtHair.strands;
 
   const shoulderGeo = new THREE.SphereGeometry(0.052, 18, 14);
   const elbowGeo = new THREE.SphereGeometry(0.032, 14, 12);
@@ -721,6 +766,9 @@ function createFigure(material, hairMat) {
   const ankleGeo = new THREE.SphereGeometry(0.024, 12, 10);
   const palmGeo = new THREE.SphereGeometry(0.034, 16, 12);
   palmGeo.scale(1.05, 1.25, 0.48);
+  for (const geo of [shoulderGeo, elbowGeo, kneeGeo, ankleGeo, palmGeo]) {
+    geo.userData.template = true;
+  }
 
   const fingers = [];
   const arms = {};
@@ -729,10 +777,10 @@ function createFigure(material, hairMat) {
     const tag = side > 0 ? 'L' : 'R';
     const upper = bone(hips, `upper${tag}`, [0.2 * side, 0.63, 0.03]);
     attach(upper, UPPER_GEO, material, null, `upper${tag}`);
-    attach(upper, shoulderGeo, material, [0, 0.01, 0], `shoulder${tag}`);
+    attach(upper, shoulderGeo, jointMat, [0, 0.01, 0], `shoulder${tag}`);
     const fore = bone(upper, `fore${tag}`, [0, -UPPER, 0]);
     attach(fore, FORE_GEO, material, null, `fore${tag}`);
-    attach(fore, elbowGeo, material, [0, 0.01, 0], `elbow${tag}`);
+    attach(fore, elbowGeo, jointMat, [0, 0.01, 0], `elbow${tag}`);
     const hand = bone(fore, `hand${tag}`, [0, -FORE, 0]);
     const palm = attach(hand, palmGeo, material, [0, -0.04, 0], `palm${tag}`);
     palm.scale.set(side > 0 ? 1 : 1, 1, 1);
@@ -774,10 +822,10 @@ function createFigure(material, hairMat) {
     attach(thigh, THIGH_GEO, material, null, `thigh${tag}`);
     const shin = bone(thigh, `shin${tag}`, [0, -THIGH, 0]);
     attach(shin, SHIN_GEO, material, null, `shin${tag}`);
-    attach(shin, kneeGeo, material, [0, 0.012, 0.006], `knee${tag}`);
+    attach(shin, kneeGeo, jointMat, [0, 0.012, 0.006], `knee${tag}`);
     const foot = bone(shin, `foot${tag}`, [0, -SHIN, 0]);
     attach(foot, FOOT_GEO, material, null, `foot${tag}`);
-    attach(foot, ankleGeo, material, [0, 0.008, 0], `ankle${tag}`);
+    attach(foot, ankleGeo, jointMat, [0, 0.008, 0], `ankle${tag}`);
     legs[tag] = { thigh, shin, foot };
   }
 
@@ -792,11 +840,6 @@ function createFigure(material, hairMat) {
     hips,
     neck,
     head,
-    ...arms.L && {
-      upperL: arms.L.upper,
-      foreL: arms.L.fore,
-      handL: arms.L.handle ? arms.L.hand : arms.L.hand,
-    },
     upperL: arms.L.upper,
     foreL: arms.L.fore,
     handL: arms.L.hand,
@@ -890,7 +933,7 @@ function assignPoses(nodes) {
   };
 
   const still = {
-    hips: poseOf([0, 0.8, 0], [0.02, 0, 0]),
+    hips: poseOf([0, 0.4, 0], [0.02, 0, 0]),
     neck: poseOf([0, 0.74, 0.012], [0.04, 0, 0]),
     head: poseOf([0, 0.145, 0.01], [0.12, 0, 0]),
     upperL: limbs.upperL,
@@ -949,11 +992,20 @@ export function createAngel(marble) {
 
   const hairMat = marble.body.clone();
   hairMat.side = THREE.DoubleSide;
+  hairMat.polygonOffset = true;
+  hairMat.polygonOffsetFactor = -1;
+  hairMat.polygonOffsetUnits = -2;
 
-  const figure = createFigure(marble.body, hairMat);
+  const jointMat = marble.body.clone();
+  jointMat.polygonOffset = true;
+  jointMat.polygonOffsetFactor = -1;
+  jointMat.polygonOffsetUnits = -4;
+
+  const figure = createFigure(marble.body, hairMat, jointMat);
   group.add(figure.hips);
 
-  const specs = makeWingSpecs();
+  const light = preferLight();
+  const specs = makeWingSpecs(light);
   const rand = mulberry32(0xa11e);
   const recipes = buildRecipes(specs, rand);
   const featherGeo = createFeatherGeometry();
@@ -989,7 +1041,9 @@ export function createAngel(marble) {
   const quat = new THREE.Quaternion();
   const scale = new THREE.Vector3(1, 1, 1);
   const hairPoint = new THREE.Vector3();
-  const hairScratch = HAIR.map((spec) => spec.pts.map(() => new THREE.Vector3()));
+  const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let calmMotion = 1;
+  let disposed = false;
 
   function applyPose(blend) {
     for (const name of posedNames) {
@@ -1016,7 +1070,7 @@ export function createAngel(marble) {
     for (const side of ['L', 'R']) {
       figure.nodes[`upper${side}`].position.y += breath * 0.014;
     }
-    const swayAmp = (1 - blend * 0.62) * calm;
+    const swayAmp = (1 - blend * 0.62) * calm * calmMotion;
     const wingMotion = {
       wingUL: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, Math.sin(time * 0.62 + 1.1) * 0.07],
       wingUR: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, -Math.sin(time * 0.62 + 1.1) * 0.07],
@@ -1031,17 +1085,18 @@ export function createAngel(marble) {
     }
   }
 
-  function updateHair(time, blend) {
-    figure.strands.forEach((ribbon, index) => {
-      const base = ribbon.userData.base;
-      const current = hairScratch[index];
+  function updateHair(time, blend, motion) {
+    const geo = figure.hair.children[0].geometry;
+    figure.strands.forEach((strand, index) => {
+      const base = strand.base;
+      const current = strand.scratch;
       for (let i = 0; i < base.length; i++) {
         const t = base.length === 1 ? 0 : i / (base.length - 1);
         const settledX = base[i].x * (1 - t * 0.62);
         const settledY = base[i].y - t * 0.2;
         const settledZ = THREE.MathUtils.lerp(base[i].z, -0.1, t * 0.7);
-        const flutter = Math.sin(time * 1.15 + index * 0.7 + t * 2.4) * 0.018 * t * (1 - blend * 0.55);
-        const flutter2 = Math.sin(time * 0.45 + index) * 0.012 * t;
+        const flutter = Math.sin(time * 1.15 + index * 0.7 + t * 2.4) * 0.018 * t * (1 - blend * 0.55) * motion;
+        const flutter2 = Math.sin(time * 0.45 + index) * 0.012 * t * motion;
         hairPoint.set(
           THREE.MathUtils.lerp(base[i].x, settledX, blend) + flutter,
           THREE.MathUtils.lerp(base[i].y, settledY, blend) + flutter2 * 0.4,
@@ -1049,9 +1104,10 @@ export function createAngel(marble) {
         );
         current[i].copy(hairPoint);
       }
-      writeRibbon(ribbon.geometry, current, ribbon.userData.width, ribbon.userData.up);
+      writeRibbon(geo, current, strand.width, strand.up, strand.vertex, strand.curve);
     });
-    const wind = 1 - blend * 0.7;
+    geo.computeVertexNormals();
+    const wind = (1 - blend * 0.7) * motion;
     figure.hair.rotation.z = Math.sin(time * 0.7) * 0.025 * wind;
     figure.hair.rotation.x = Math.sin(time * 0.5 + 0.4) * 0.015 * wind;
   }
@@ -1101,7 +1157,8 @@ export function createAngel(marble) {
           1.35 *
           (0.35 + t) *
           (recipe.layerF < 0.34 ? 1.15 : 0.75) *
-          (1 - blend * 0.5);
+          (1 - blend * 0.5) *
+          calmMotion;
         _q2.setFromAxisAngle(stack, flap);
         dir.applyQuaternion(_q2).normalize();
 
@@ -1111,10 +1168,12 @@ export function createAngel(marble) {
           lenMul *
           (0.84 + recipe.seed * 0.3) *
           scallop;
-        origin.addScaledVector(stack, (recipe.layerF - 0.45) * 0.016);
-        origin.z += recipe.layerF * 0.012 * (1 - blend * 0.4);
+        // Separate layers along the wing normal by more than the vane camber,
+        // plus a stable per-feather bias so neighbors don't sit on one plane.
+        const lift = (recipe.layerF - 0.5) * 0.05 + (recipe.alt - 0.5) * 0.012;
+        origin.addScaledVector(stack, lift);
         origin.y += breathLift * 0.004 * (1 - blend);
-        origin.addScaledVector(dir, 0.012 + recipe.layerF * 0.008);
+        origin.addScaledVector(dir, 0.01 + recipe.layerF * 0.006);
 
         basisQuat(quat, dir, stack);
         _q.setFromAxisAngle(dir, (recipe.alt - 0.5) * 0.35);
@@ -1139,21 +1198,41 @@ export function createAngel(marble) {
   return {
     group,
     update(time) {
-      const t = time || 0;
-      group.position.y = Math.sin(t * 0.62) * 0.085;
-      group.position.x = Math.sin(t * 0.23) * 0.02;
-      group.rotation.z = Math.sin(t * 0.31) * 0.018;
-      group.rotation.y = Math.sin(t * 0.17) * 0.04;
+      if (disposed) return;
+      if (!Number.isFinite(formBlend)) formBlend = 0;
+      const t = Number.isFinite(time) ? time : 0;
+      const reduce = motionQuery && motionQuery.matches ? 0.2 : 1;
+      calmMotion = reduce;
+      const motion = (1 - formBlend * 0.7) * reduce;
+      group.position.y = Math.sin(t * 0.62) * 0.085 * motion;
+      group.position.x = Math.sin(t * 0.23) * 0.02 * motion;
+      group.rotation.z = Math.sin(t * 0.31) * 0.018 * motion;
+      group.rotation.y = Math.sin(t * 0.17) * 0.04 * motion;
       applyPose(formBlend);
       applyLife(t, formBlend);
-      updateHair(t, formBlend);
+      updateHair(t, formBlend, reduce);
       group.updateMatrixWorld(true);
       updateFeathers(t, formBlend);
     },
     setForm(form, blend) {
-      const k = THREE.MathUtils.clamp(blend ?? 1, 0, 1);
+      const raw = blend === undefined || blend === null ? 1 : Number(blend);
+      if (!Number.isFinite(raw)) return;
+      const k = THREE.MathUtils.clamp(raw, 0, 1);
       if (form === 'still') formBlend = k;
       else if (form === 'radiant') formBlend = 1 - k;
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      const geometries = new Set();
+      group.traverse((obj) => {
+        if (obj.geometry && !obj.geometry.userData.template) geometries.add(obj.geometry);
+        if (obj.isInstancedMesh) obj.dispose();
+      });
+      for (const geometry of geometries) geometry.dispose();
+      hairMat.dispose();
+      jointMat.dispose();
+      group.removeFromParent();
     },
   };
 }

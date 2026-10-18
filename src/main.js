@@ -17,7 +17,10 @@ import { createMoonGlow } from './glow.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const params = new URLSearchParams(window.location.search);
-const settle = params.has('settle') || reducedMotion;
+// Dev capture. ?hero and ?capture lock one camera and one clock value.
+const hero = params.has('hero') || params.has('capture');
+const settle = params.has('settle') || reducedMotion || hero;
+if (hero) document.documentElement.dataset.capture = 'hero';
 
 const quality = detectQuality();
 
@@ -59,6 +62,11 @@ controls.minPolarAngle = 0.42;
 controls.maxPolarAngle = Math.PI * 0.58;
 controls.autoRotateSpeed = 0.38;
 controls.update();
+
+const heroTimeParam = Number(params.get('time'));
+const heroTime = Number.isFinite(heroTimeParam) ? heroTimeParam : 0;
+const heroPlace = hero ? readHeroView() : null;
+if (heroPlace) applyHeroCamera(heroPlace);
 
 const environment = createEnvironment(renderer, quality);
 scene.environment = environment.texture;
@@ -179,10 +187,11 @@ let released = false;
 
 function frame() {
   if (released) return;
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const time = clock.elapsedTime;
+  const liveDt = Math.min(clock.getDelta(), 0.05);
+  const dt = hero ? 0 : liveDt;
+  const time = hero ? heroTime : clock.elapsedTime;
 
-  if (introActive) {
+  if (!hero && introActive) {
     introElapsed += dt;
     const p = Math.min(1, introElapsed / introSeconds);
     const eased = 1 - (1 - p) ** 3;
@@ -191,8 +200,14 @@ function frame() {
     if (p >= 1) introActive = false;
   }
 
-  if (!interacting) idleFor += dt;
-  controls.autoRotate = !introActive && !interacting && idleFor > 1.4;
+  if (hero) {
+    camera.position.copy(heroPlace.position);
+    controls.target.copy(heroPlace.look);
+    controls.autoRotate = false;
+  } else {
+    if (!interacting) idleFor += dt;
+    controls.autoRotate = !introActive && !interacting && idleFor > 1.4;
+  }
 
   controls.update();
   moon.lookAt(camera.position);
@@ -212,6 +227,7 @@ function frame() {
   grade.uniforms.uTime.value = time;
 
   composer.render();
+  if (hero) document.documentElement.dataset.heroReady = '1';
   frameId = requestAnimationFrame(frame);
 }
 
@@ -299,16 +315,53 @@ function resize() {
   resizeLock = false;
 }
 
+function numberParam(name, fallback) {
+  if (!params.has(name)) return fallback;
+  const value = Number(params.get(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function readHeroView() {
+  const requested = params.get('view');
+  const view = requested === 'side' || requested === 'back' ? requested : 'front';
+  const dist = numberParam('dist', 7.2);
+  const fov = numberParam('fov', 28);
+  const lookY = numberParam('look', 1.05);
+  const look = new THREE.Vector3(0, lookY, 0);
+  const position = new THREE.Vector3();
+  if (view === 'side') position.set(dist, lookY, 0);
+  else if (view === 'back') position.set(0, lookY, -dist);
+  else position.set(0, lookY, dist);
+  return { view, fov, look, position };
+}
+
+function applyHeroCamera(place) {
+  camera.fov = place.fov;
+  camera.position.copy(place.position);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(place.look);
+  camera.updateProjectionMatrix();
+  controls.target.copy(place.look);
+  controls.enabled = false;
+  controls.enableDamping = false;
+  controls.autoRotate = false;
+  controls.update();
+}
+
 function detectQuality() {
   const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const saveData = navigator.connection && navigator.connection.saveData;
   const low = narrow || coarse || saveData;
+  const dprOverride = numberParam('dpr', hero ? 1 : NaN);
+  const pixelRatio = hero
+    ? Math.min(Math.max(dprOverride, 0.5), 2)
+    : low
+      ? Math.min(window.devicePixelRatio || 1, 1.15)
+      : Math.min(window.devicePixelRatio || 1, 1.6);
   return {
     low,
-    pixelRatio: low
-      ? Math.min(window.devicePixelRatio || 1, 1.15)
-      : Math.min(window.devicePixelRatio || 1, 1.6),
+    pixelRatio,
     chroma: low ? 0 : 0.0011,
     grain: low ? 0.008 : 0.014,
     vignette: low ? 0.16 : 0.22,

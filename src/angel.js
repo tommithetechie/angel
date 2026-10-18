@@ -470,21 +470,21 @@ function preferLight() {
 function featherEnvelope(kind, t, rowF, layerF) {
   const layer = THREE.MathUtils.lerp(1, 0.32, Math.pow(layerF, 0.85));
   if (kind === 'upper') {
-    const arch = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.78));
-    const point = 1 - 0.55 * smoothstep(0.72, 1, t);
-    const base = (0.24 + 0.7 * arch) * point;
-    const row = THREE.MathUtils.lerp(0.68, 1, 1 - Math.abs(rowF) * 0.35);
+    const arch = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.72));
+    const point = 1 - 0.62 * smoothstep(0.78, 1, t);
+    const base = (0.42 + 0.82 * arch) * point;
+    const row = THREE.MathUtils.lerp(0.72, 1, 1 - Math.abs(rowF) * 0.28);
     return base * row * layer;
   }
   if (kind === 'middle') {
-    const base = THREE.MathUtils.lerp(0.42, 0.7, Math.pow(t, 0.55));
-    const row = THREE.MathUtils.lerp(0.38, 1, smoothstep(-0.15, 1, rowF));
-    const primary = t > 0.74 ? THREE.MathUtils.lerp(0.45, 1.2, smoothstep(0.15, 1, rowF) * (layerF < 0.45 ? 1 : 0.35)) : 1;
+    const base = THREE.MathUtils.lerp(0.58, 0.92, Math.pow(t, 0.42));
+    const row = THREE.MathUtils.lerp(0.46, 1, smoothstep(-0.15, 1, rowF));
+    const primary = t > 0.74 ? THREE.MathUtils.lerp(0.5, 1.05, smoothstep(0.15, 1, rowF) * (layerF < 0.45 ? 1 : 0.4)) : 1;
     return base * row * layer * primary;
   }
-  const belly = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.72));
-  const taper = THREE.MathUtils.lerp(1, 0.1, Math.pow(t, 1.3));
-  const base = THREE.MathUtils.lerp(0.26, 0.98, Math.pow(belly, 0.5)) * taper;
+  const belly = Math.sin(Math.PI * Math.pow(Math.max(t, 0.001), 0.55));
+  const taper = THREE.MathUtils.lerp(1, 0.2, Math.pow(t, 1.55));
+  const base = THREE.MathUtils.lerp(0.48, 1.2, Math.pow(belly, 0.42)) * taper;
   const row = THREE.MathUtils.lerp(0.55, 1, 1 - Math.abs(rowF) * 0.35);
   return base * row * layer;
 }
@@ -506,13 +506,13 @@ function makeWingSpecs(light) {
       layers,
       flutter: 0.055,
       open: {
-        points: [v3(0, 0, 0), v3(0.22 * s, 0.3, -0.05), v3(0.06 * s, 1.05, -0.01), v3(-0.11 * s, 1.6, 0.03)],
-        hints: [v3(0.15 * s, 0.95, 0.06), v3(0.55 * s, 0.72, 0.1), v3(0.02 * s, 0.99, 0.02)],
-        fan0: 0.14,
-        fan1: 0.28,
-        out: 0.8,
-        lenMul: 1,
-        width: 1.02,
+        points: [v3(0, 0, 0), v3(0.24 * s, 0.12, -0.06), v3(0.14 * s, 0.38, -0.01), v3(0.015 * s, 0.58, 0.04)],
+        hints: [v3(0.16 * s, 0.92, 0.1), v3(0.06 * s, 0.98, 0.05), v3(0.0, 1, 0.02)],
+        fan0: 0.48,
+        fan1: 0.18,
+        out: 0.84,
+        lenMul: 0.78,
+        width: 1.18,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.05 * s, -0.28, -0.06), v3(0.03 * s, -0.58, -0.04), v3(0.01 * s, -0.92, -0.02)],
@@ -534,13 +534,13 @@ function makeWingSpecs(light) {
       layers,
       flutter: 0.07,
       open: {
-        points: [v3(0, 0, 0), v3(0.28 * s, 0.1, -0.05), v3(0.55 * s, 0.22, -0.02), v3(0.78 * s, 0.34, 0.02)],
-        hints: [v3(0.02 * s, -0.99, 0.08), v3(0.22 * s, -0.92, 0.05), v3(0.72 * s, -0.48, 0.03)],
-        fan0: 0.18,
-        fan1: 0.62,
-        out: 0.86,
-        lenMul: 1,
-        width: 0.88,
+        points: [v3(0, 0, 0), v3(0.24 * s, -0.02, -0.04), v3(0.5 * s, 0.04, 0.0), v3(0.66 * s, 0.1, 0.03)],
+        hints: [v3(0.64 * s, -0.5, 0.06), v3(0.9 * s, -0.12, 0.04), v3(0.97 * s, 0.06, 0.02)],
+        fan0: 1.25,
+        fan1: 0.5,
+        out: 0.92,
+        lenMul: 0.8,
+        width: 1.05,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.08 * s, -0.32, -0.08), v3(0.05 * s, -0.68, -0.05), v3(0.02 * s, -1.05, -0.02)],
@@ -563,13 +563,13 @@ function makeWingSpecs(light) {
       flutter: 0.085,
       lenBias: s < 0 ? 1.06 : 1,
       open: {
-        points: [v3(0, 0, 0), v3(0.14 * s, -0.55, -0.06), v3(0.18 * s, -1.18, -0.03), v3(0.04 * s, -1.95, 0.0)],
-        hints: [v3(0.2 * s, -0.94, -0.04), v3(0.28 * s, -0.9, -0.02), v3(0.05 * s, -1, 0.0)],
-        fan0: 0.42,
-        fan1: 0.1,
-        out: 0.82,
-        lenMul: 1,
-        width: 1.05,
+        points: [v3(0, 0, 0), v3(0.32 * s, -0.32, -0.03), v3(0.2 * s, -1.05, 0.02), v3(0.05 * s, -2.08, 0.04)],
+        hints: [v3(0.8 * s, -0.32, 0.04), v3(0.2 * s, -0.94, 0.02), v3(0.04 * s, -1, 0.0)],
+        fan0: 1.08,
+        fan1: 0.32,
+        out: 0.88,
+        lenMul: 1.08,
+        width: 1.18,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.05 * s, -0.22, -0.05), v3(0.03 * s, -0.42, -0.03), v3(0.01 * s, -0.62, -0.01)],
@@ -689,20 +689,22 @@ function createHair(material) {
 }
 
 const HAIR = [
-  { w: 0.055, up: [0, 0, 1], pts: [[0.0, 0.12, 0.06], [-0.06, 0.04, 0.12], [-0.16, -0.12, 0.08], [-0.26, -0.32, 0.0]] },
-  { w: 0.042, up: [0, 0, 1], pts: [[0.03, 0.13, 0.05], [-0.04, 0.02, 0.13], [-0.14, -0.16, 0.1], [-0.22, -0.38, 0.02]] },
-  { w: 0.036, up: [0, 1, 0], pts: [[-0.02, 0.14, 0.02], [-0.1, 0.06, 0.06], [-0.22, -0.1, 0.02], [-0.34, -0.28, -0.04]] },
-  { w: 0.05, up: [0, 1, 0], pts: [[0.02, 0.15, -0.02], [-0.08, 0.1, -0.06], [-0.2, -0.05, -0.1], [-0.3, -0.28, -0.08]] },
-  { w: 0.046, up: [1, 0, 0], pts: [[0.0, 0.13, -0.06], [-0.04, 0.02, -0.12], [-0.08, -0.18, -0.14], [-0.06, -0.42, -0.12]] },
-  { w: 0.034, up: [1, 0, 0], pts: [[0.06, 0.12, -0.04], [0.1, 0.02, -0.08], [0.08, -0.16, -0.1], [0.04, -0.32, -0.08]] },
-  { w: 0.03, up: [0, 1, 0], pts: [[-0.05, 0.14, 0.0], [-0.12, 0.2, 0.04], [-0.18, 0.14, 0.08], [-0.22, 0.02, 0.06]] },
-  { w: 0.028, up: [0, 0, 1], pts: [[0.04, 0.15, 0.0], [0.02, 0.22, 0.04], [-0.06, 0.2, 0.08], [-0.12, 0.1, 0.06]] },
-  { w: 0.04, up: [0, 0, 1], pts: [[0.05, 0.1, 0.08], [-0.02, -0.02, 0.12], [-0.1, -0.2, 0.06], [-0.16, -0.4, -0.02]] },
-  { w: 0.026, up: [0, 1, 0], pts: [[-0.04, 0.11, 0.09], [-0.12, -0.02, 0.1], [-0.2, -0.2, 0.04], [-0.28, -0.36, -0.02]] },
-  { w: 0.033, up: [0, 1, 0], pts: [[0.0, 0.145, -0.01], [-0.14, 0.08, -0.02], [-0.26, -0.08, 0.02], [-0.36, -0.22, 0.06]] },
-  { w: 0.024, up: [0, 0, 1], pts: [[0.08, 0.11, 0.04], [0.12, 0.0, 0.02], [0.1, -0.14, -0.02], [0.06, -0.26, -0.04]] },
-  { w: 0.038, up: [1, 0, 0], pts: [[-0.02, 0.1, -0.08], [-0.1, -0.02, -0.1], [-0.16, -0.22, -0.06], [-0.18, -0.4, 0.0]] },
-  { w: 0.02, up: [0, 1, 0], pts: [[0.01, 0.16, 0.04], [-0.05, 0.22, 0.1], [-0.12, 0.16, 0.14], [-0.16, 0.06, 0.1]] },
+  { w: 0.072, up: [0, 1, 0], pts: [[0.05, 0.1, 0.12], [-0.04, 0.02, 0.18], [-0.16, -0.08, 0.14], [-0.3, -0.16, 0.04]] },
+  { w: 0.064, up: [0, 1, 0], pts: [[0.1, 0.06, 0.1], [0.0, -0.02, 0.17], [-0.14, -0.12, 0.13], [-0.28, -0.22, 0.03]] },
+  { w: 0.058, up: [0, 0, 1], pts: [[-0.02, 0.12, 0.1], [-0.12, 0.02, 0.17], [-0.24, -0.1, 0.1], [-0.36, -0.2, 0.0]] },
+  { w: 0.05, up: [0, 1, 0], pts: [[0.02, 0.14, 0.06], [-0.08, 0.08, 0.14], [-0.2, -0.02, 0.12], [-0.32, -0.12, 0.04]] },
+  { w: 0.046, up: [0, 1, 0], pts: [[0.08, 0.12, 0.04], [-0.02, 0.06, 0.15], [-0.16, -0.06, 0.12], [-0.28, -0.18, 0.02]] },
+  { w: 0.042, up: [1, 0, 0], pts: [[-0.06, 0.04, 0.14], [-0.16, -0.08, 0.12], [-0.26, -0.22, 0.04], [-0.32, -0.4, -0.02]] },
+  { w: 0.038, up: [1, 0, 0], pts: [[0.0, 0.0, 0.16], [-0.12, -0.12, 0.12], [-0.22, -0.28, 0.04], [-0.28, -0.46, -0.04]] },
+  { w: 0.044, up: [0, 0, 1], pts: [[0.12, 0.08, 0.06], [0.04, -0.02, 0.14], [-0.1, -0.14, 0.1], [-0.22, -0.28, 0.02]] },
+  { w: 0.036, up: [0, 1, 0], pts: [[0.0, 0.16, 0.02], [-0.1, 0.14, 0.1], [-0.22, 0.04, 0.12], [-0.32, -0.06, 0.04]] },
+  { w: 0.034, up: [0, 1, 0], pts: [[0.06, 0.16, -0.02], [-0.06, 0.16, 0.06], [-0.18, 0.08, 0.1], [-0.28, -0.02, 0.04]] },
+  { w: 0.04, up: [0, 1, 0], pts: [[-0.08, 0.12, 0.02], [-0.16, 0.04, 0.08], [-0.26, -0.1, 0.04], [-0.34, -0.24, -0.02]] },
+  { w: 0.032, up: [0, 0, 1], pts: [[-0.1, 0.08, -0.04], [-0.18, -0.04, 0.02], [-0.26, -0.18, 0.0], [-0.3, -0.34, -0.04]] },
+  { w: 0.036, up: [0, 1, 0], pts: [[0.04, 0.13, -0.08], [-0.06, 0.04, -0.1], [-0.14, -0.12, -0.06], [-0.18, -0.32, -0.02]] },
+  { w: 0.028, up: [0, 1, 0], pts: [[0.1, 0.1, -0.02], [0.12, -0.02, 0.02], [0.04, -0.16, 0.04], [-0.08, -0.3, 0.0]] },
+  { w: 0.03, up: [0, 0, 1], pts: [[-0.02, 0.15, 0.08], [-0.12, 0.18, 0.12], [-0.22, 0.1, 0.14], [-0.3, 0.0, 0.06]] },
+  { w: 0.026, up: [1, 0, 0], pts: [[0.02, -0.02, 0.15], [-0.08, -0.16, 0.1], [-0.16, -0.32, 0.02], [-0.2, -0.48, -0.04]] },
 ];
 
 function createFigure(material, hairMat, jointMat) {
@@ -786,10 +788,10 @@ function createFigure(material, hairMat, jointMat) {
     palm.scale.set(side > 0 ? 1 : 1, 1, 1);
 
     const fingerSpecs = [
-      { x: -0.02, z: 0.008, len: 0.078, r: 0.0082, curlR: 0.42, curlS: 0.12 },
-      { x: -0.006, z: 0.011, len: 0.09, r: 0.0086, curlR: 0.36, curlS: 0.1 },
-      { x: 0.009, z: 0.009, len: 0.082, r: 0.008, curlR: 0.4, curlS: 0.12 },
-      { x: 0.022, z: 0.005, len: 0.066, r: 0.007, curlR: 0.5, curlS: 0.16 },
+      { x: -0.02, z: 0.008, len: 0.078, r: 0.0082, curlR: 0.2, curlS: 0.12 },
+      { x: -0.006, z: 0.011, len: 0.09, r: 0.0086, curlR: 0.16, curlS: 0.1 },
+      { x: 0.009, z: 0.009, len: 0.082, r: 0.008, curlR: 0.18, curlS: 0.12 },
+      { x: 0.022, z: 0.005, len: 0.066, r: 0.007, curlR: 0.24, curlS: 0.16 },
     ];
     for (const spec of fingerSpecs) {
       const finger = bone(hand, `finger${tag}`, [spec.x * side, -0.075, spec.z]);
@@ -806,9 +808,9 @@ function createFigure(material, hairMat, jointMat) {
     attach(thumb, thumbGeo, material, [0, -0.03, 0], `thumbMesh${tag}`);
     fingers.push({
       bone: thumb,
-      curlR: 0.55,
+      curlR: 0.32,
       curlS: 0.25,
-      z: 0.55 * side,
+      z: 0.42 * side,
       stillZ: 0.35 * side,
     });
 
@@ -829,12 +831,12 @@ function createFigure(material, hairMat, jointMat) {
     legs[tag] = { thigh, shin, foot };
   }
 
-  const wingUL = bone(hips, 'wingUL', [0.12, 0.58, -0.13]);
-  const wingUR = bone(hips, 'wingUR', [-0.12, 0.58, -0.13]);
-  const wingML = bone(hips, 'wingML', [0.16, 0.46, -0.11]);
-  const wingMR = bone(hips, 'wingMR', [-0.16, 0.46, -0.11]);
-  const wingLL = bone(hips, 'wingLL', [0.07, 0.04, -0.1]);
-  const wingLR = bone(hips, 'wingLR', [-0.07, 0.04, -0.1]);
+  const wingUL = bone(hips, 'wingUL', [0.09, 0.68, -0.15]);
+  const wingUR = bone(hips, 'wingUR', [-0.09, 0.68, -0.15]);
+  const wingML = bone(hips, 'wingML', [0.18, 0.44, -0.12]);
+  const wingMR = bone(hips, 'wingMR', [-0.18, 0.44, -0.12]);
+  const wingLL = bone(hips, 'wingLL', [0.11, 0.2, -0.1]);
+  const wingLR = bone(hips, 'wingLR', [-0.11, 0.2, -0.1]);
 
   const nodes = {
     hips,
@@ -911,25 +913,73 @@ function stillLimbPoses() {
   return pose;
 }
 
+function radiantLimbPoses() {
+  const up = v3(0, 1, 0);
+  const pose = {};
+  const legs = [
+    { tag: 'L', side: 1, knee: v3(0.045, -1, 0.02), foot: v3(0.07, -0.9, 0.04), toes: v3(0.02, -0.9, 0.4) },
+    { tag: 'R', side: -1, knee: v3(-0.035, -1, 0.015), foot: v3(-0.05, -0.9, 0.03), toes: v3(-0.01, -0.9, 0.38) },
+  ];
+  for (const leg of legs) {
+    const thighPos = v3(0.05 * leg.side, -0.02, 0.012);
+    const kneeDir = leg.knee.clone().normalize();
+    const knee = thighPos.clone().addScaledVector(kneeDir, THIGH);
+    const shinDir = leg.foot.clone().sub(knee).normalize();
+    const thighQ = quatAimDown(kneeDir);
+    const shinQ = quatAimDown(shinDir.clone().applyQuaternion(thighQ.clone().invert()));
+    const shinWorld = thighQ.clone().multiply(shinQ);
+    const footDir = leg.toes.clone().normalize();
+    const footQ = quatAimDownWithUp(
+      footDir.clone().applyQuaternion(shinWorld.clone().invert()),
+      up.clone().applyQuaternion(shinWorld.clone().invert()),
+    );
+    pose[`thigh${leg.tag}`] = poseOf(thighPos.toArray(), thighQ);
+    pose[`shin${leg.tag}`] = poseOf([0, -THIGH, 0], shinQ);
+    pose[`foot${leg.tag}`] = poseOf([0, -SHIN, 0], footQ);
+  }
+
+  const arms = [
+    { tag: 'L', side: 1, hand: v3(0.34, 0.16, 0.16), hint: v3(0.72, 0.05, -0.38) },
+    { tag: 'R', side: -1, hand: v3(-0.32, 0.14, 0.14), hint: v3(-0.68, 0.02, -0.34) },
+  ];
+  for (const arm of arms) {
+    const shoulder = v3(0.2 * arm.side, 0.62, 0.02);
+    const ik = solveTwoBone(shoulder, arm.hand, UPPER, FORE, arm.hint);
+    const upperQ = quatAimDown(ik.dirA);
+    const foreQ = quatAimDown(ik.dirB.clone().applyQuaternion(upperQ.clone().invert()));
+    const armWorld = upperQ.clone().multiply(foreQ);
+    const fingerDir = v3(arm.side * 0.12, -0.92, 0.22).normalize();
+    const handQ = quatAimDownWithUp(
+      fingerDir.applyQuaternion(armWorld.clone().invert()),
+      up.clone().applyQuaternion(armWorld.clone().invert()),
+    );
+    pose[`upper${arm.tag}`] = poseOf(shoulder.toArray(), upperQ);
+    pose[`fore${arm.tag}`] = poseOf([0, -UPPER, 0], foreQ);
+    pose[`hand${arm.tag}`] = poseOf([0, -FORE, 0], handQ);
+  }
+  return pose;
+}
+
 function assignPoses(nodes) {
   const limbs = stillLimbPoses();
+  const hanging = radiantLimbPoses();
 
   const radiant = {
-    hips: poseOf([0, 1.1, 0], [0.03, -0.08, 0.035]),
-    neck: poseOf([0, 0.74, 0.012], [-0.06, -0.18, 0.02]),
-    head: poseOf([0, 0.145, 0.01], [0.28, -0.62, 0.08]),
-    upperL: poseOf([0.19, 0.63, 0.03], [-0.14, 0.18, -0.38]),
-    foreL: poseOf([0, -UPPER, 0], [-0.22, 0.12, 0.28]),
-    handL: poseOf([0, -FORE, 0], [0.15, -0.7, 0.35]),
-    upperR: poseOf([-0.19, 0.63, 0.03], [-0.1, -0.12, 0.36]),
-    foreR: poseOf([0, -UPPER, 0], [-0.18, -0.08, -0.26]),
-    handR: poseOf([0, -FORE, 0], [0.12, 0.65, -0.32]),
-    thighL: poseOf([0.052, -0.02, 0.012], [-0.04, 0.04, -0.03]),
-    shinL: poseOf([0, -THIGH, 0], [0.06, 0, 0]),
-    footL: poseOf([0, -SHIN, 0], [-0.18, 0.04, 0]),
-    thighR: poseOf([-0.05, -0.02, 0.01], [0.02, -0.05, 0.035]),
-    shinR: poseOf([0, -THIGH, 0], [0.04, 0, 0]),
-    footR: poseOf([0, -SHIN, 0], [-0.12, -0.06, 0]),
+    hips: poseOf([0, 1.32, 0], [0.05, -0.04, 0.012]),
+    neck: poseOf([0, 0.74, 0.016], [0.1, -0.14, 0.03]),
+    head: poseOf([0, 0.145, 0.008], [0.2, -0.22, 0.06]),
+    upperL: hanging.upperL,
+    foreL: hanging.foreL,
+    handL: hanging.handL,
+    upperR: hanging.upperR,
+    foreR: hanging.foreR,
+    handR: hanging.handR,
+    thighL: hanging.thighL,
+    shinL: hanging.shinL,
+    footL: hanging.footL,
+    thighR: hanging.thighR,
+    shinR: hanging.shinR,
+    footR: hanging.footR,
   };
 
   const still = {

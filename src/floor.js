@@ -36,6 +36,7 @@ const reflectorShader = {
     uContact: { value: null },
     uContactMatrix: { value: new THREE.Matrix4() },
     uContactStrength: { value: 0.55 },
+    uPresence: { value: 0 },
   },
   vertexShader: /* glsl */ `
     uniform mat4 textureMatrix;
@@ -69,6 +70,7 @@ const reflectorShader = {
     uniform float uRippleAmt;
     uniform float uDetail;
     uniform float uContactStrength;
+    uniform float uPresence;
     uniform vec3 uMoonDir;
     uniform float uMoonStrength;
     uniform vec3 uFogColor;
@@ -173,7 +175,7 @@ const reflectorShader = {
       float horizon = smoothstep(36.0, 14.0, radial);
       col = mix(uFogColor, col, horizon * (1.0 - fogF));
 
-      gl_FragColor = vec4(col, 1.0);
+      gl_FragColor = vec4(col, uPresence);
     }
   `,
 };
@@ -351,9 +353,9 @@ export function createFloor(scene, quality, contact) {
     uniforms.uContactMatrix.value = contact.matrix;
   }
 
-  const deepRadiant = new THREE.Color(0x07060a);
+  const deepRadiant = new THREE.Color(0x040308);
   const deepStill = new THREE.Color(0x0a3c48);
-  const shallowRadiant = new THREE.Color(0x121016);
+  const shallowRadiant = new THREE.Color(0x06050a);
   const shallowStill = new THREE.Color(0x2a8d98);
   const glowRadiant = new THREE.Color(0xc4a36a);
   const glowStill = new THREE.Color(0xb7e4e2);
@@ -399,8 +401,12 @@ export function createFloor(scene, quality, contact) {
       uniforms.uDeep.value.copy(deepRadiant).lerp(deepStill, still);
       uniforms.uShallow.value.copy(shallowRadiant).lerp(shallowStill, still);
       sky.material.uniforms.uGlow.value.copy(glowRadiant).lerp(glowStill, still);
-      uniforms.uReflFacing.value = THREE.MathUtils.lerp(0.58, 0.18, still);
-      uniforms.uReflGrazing.value = THREE.MathUtils.lerp(0.96, 0.84, still);
+      uniforms.uReflFacing.value = THREE.MathUtils.lerp(0.04, 0.18, still);
+      uniforms.uReflGrazing.value = THREE.MathUtils.lerp(0.08, 0.84, still);
+      uniforms.uPresence.value = still;
+      mirror.visible = still > 0.02;
+      mirror.material.transparent = still < 0.985;
+      mirror.material.depthWrite = still >= 0.985;
       uniforms.uDistort.value = THREE.MathUtils.lerp(0.00035, 0.05, still);
       uniforms.uDisplace.value = THREE.MathUtils.lerp(0.0, 0.032, still);
       uniforms.uBlur.value = THREE.MathUtils.lerp(0.00055, 0.008, still);

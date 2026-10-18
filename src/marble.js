@@ -639,17 +639,9 @@ float metalnessFactor = metalness;
 `;
 
 const BODY_NORMAL = /* glsl */ `
-{
-  float marbleH = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-  vec3 sigmaX = dFdx(vViewPosition);
-  vec3 sigmaY = dFdy(vViewPosition);
-  vec3 r1 = cross(sigmaY, normal);
-  vec3 r2 = cross(normal, sigmaX);
-  float det = dot(sigmaX, r1);
-  vec3 grad = sign(det) * (dFdx(marbleH) * r1 + dFdy(marbleH) * r2);
-  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 5.6);
-  normal = mix(normal, bumped, uProject);
-}
+  // The albedo's luminance used to push the normal around. On the body that
+  // reads as a hammered surface, so the mix stays off. Cracks remain the
+  // painted normal map.
 `;
 
 const BODY_EMISSIVE = /* glsl */ `
@@ -831,7 +823,7 @@ function bindShader(material, uniforms, projectFeathers) {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v5' : 'marble-body-v5');
+  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v5' : 'marble-body-v6');
   if (!projectFeathers) {
     material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
       const project = uvSpan(geometry) > 0.75 ? 1 : 0;

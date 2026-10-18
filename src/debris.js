@@ -294,5 +294,14 @@ export function createDebris(marble) {
       blend = next;
       applyFade();
     },
+    dispose() {
+      group.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+      });
+      stone.dispose();
+      if (veined) veined.dispose();
+      veinMat.dispose();
+      group.removeFromParent();
+    },
   };
 }

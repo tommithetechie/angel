@@ -604,7 +604,7 @@ vec4 marbleSample(sampler2D tex, vec3 p, vec3 w) {
 `;
 
 const BODY_MAP = /* glsl */ `
-vec3 marbleP = (uMarbleMatrix * vec4(vMarblePos, 1.0)).xyz * 0.85;
+vec3 marbleP = (uMarbleMatrix * vec4(vMarblePos, 1.0)).xyz * 0.48;
 vec3 marbleN = normalize(uMarbleNormalMatrix * vMarbleNormal);
 vec3 marbleW = abs(marbleN);
 marbleW = pow(max(marbleW, vec3(1.0e-4)), vec3(4.0));
@@ -646,7 +646,7 @@ const BODY_NORMAL = /* glsl */ `
   vec3 r2 = cross(normal, sigmaX);
   float det = dot(sigmaX, r1);
   vec3 grad = sign(det) * (dFdx(marbleH) * r1 + dFdy(marbleH) * r2);
-  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 4.0);
+  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 5.6);
   normal = mix(normal, bumped, uProject);
 }
 `;
@@ -669,7 +669,7 @@ const BODY_PHASE = /* glsl */ `
   float band = smoothstep(0.02, 0.18, travel) * smoothstep(0.64, 0.28, travel);
   band *= 1.0 - smoothstep(0.045, 0.2, fwidth(phase));
   float breath = 0.92 + 0.08 * sin(uMarbleTime * 0.48 + phase * 6.2831853);
-  float glow = (0.46 + 0.54 * band) * breath;
+  float glow = (0.84 + 0.16 * band) * breath;
   glow *= mix(1.0, 0.07, uMarbleStill);
   float eLuma = dot(totalEmissiveRadiance, vec3(0.2126, 0.7152, 0.0722));
   vec3 cooled = vec3(0.58, 0.66, 0.56) * eLuma;
@@ -708,7 +708,7 @@ const SHADER_PULSE = /* glsl */ `
   float band = smoothstep(0.02, 0.18, travel) * smoothstep(0.64, 0.28, travel);
   band *= 1.0 - smoothstep(0.045, 0.2, fwidth(phase));
   float breath = 0.92 + 0.08 * sin(uMarbleTime * 0.48 + phase * 6.2831853);
-  float glow = (0.46 + 0.54 * band) * breath;
+  float glow = (0.84 + 0.16 * band) * breath;
   glow *= mix(1.0, 0.07, uMarbleStill);
   float eLuma = dot(totalEmissiveRadiance, vec3(0.2126, 0.7152, 0.0722));
   vec3 cooled = vec3(0.58, 0.66, 0.56) * eLuma;
@@ -725,7 +725,7 @@ const WING_UV = /* glsl */ `
 #else
   vec3 featherPos = position;
 #endif
-vec2 featherUv = featherPos.xy * vec2(0.85, 0.85);
+vec2 featherUv = featherPos.xy * vec2(0.48, 0.48);
 #ifdef USE_MAP
   vMapUv = featherUv;
 #endif
@@ -824,7 +824,7 @@ function bindShader(material, uniforms, projectFeathers) {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v3' : 'marble-body-v3');
+  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v4' : 'marble-body-v4');
   if (!projectFeathers) {
     material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
       const project = uvSpan(geometry) > 0.75 ? 1 : 0;
@@ -845,13 +845,13 @@ function applySurface(material, textures) {
   material.emissiveMap = textures.emissiveMap;
   material.color.set(0xffffff);
   material.emissive.set(0xffffff);
-  material.emissiveIntensity = 1.9;
+  material.emissiveIntensity = 2.45;
   material.roughness = 1;
   material.metalness = 1;
-  material.normalScale.set(0.62, 0.62);
-  material.clearcoat = 1;
-  material.clearcoatRoughness = 0.055;
-  material.envMapIntensity = 1.12;
+  material.normalScale.set(0.92, 0.92);
+  material.clearcoat = 0.85;
+  material.clearcoatRoughness = 0.16;
+  material.envMapIntensity = 0.58;
   material.ior = 1.54;
   material.specularIntensity = 1;
   material.sheen = 0.24;
@@ -924,9 +924,9 @@ export function createMarble(renderer) {
     vertexColors: true,
   });
   applySurface(wing, textures);
-  wing.envMapIntensity = 0.78;
-  wing.clearcoat = 0.82;
-  wing.emissiveIntensity = 1.45;
+  wing.envMapIntensity = 0.42;
+  wing.clearcoat = 0.62;
+  wing.emissiveIntensity = 2.05;
   bindShader(wing, uniforms, true);
 
   materials.push(body, wing);

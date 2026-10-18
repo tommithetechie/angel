@@ -17,26 +17,26 @@ import * as THREE from 'three';
 const FULL_SECONDS = 2.7;
 
 const RADIANT = {
-  background: new THREE.Color(0x05040a),
-  fog: new THREE.Color(0x100e14),
-  fogDensity: 0.016,
-  exposure: 0.92,
-  envIntensity: 1.25,
-  bloomStrength: 0.46,
-  bloomThreshold: 1.45,
-  bloomRadius: 0.42,
-  bloomTint: new THREE.Color(0xffe2b0),
+  background: new THREE.Color(0x040308),
+  fog: new THREE.Color(0x09080d),
+  fogDensity: 0.012,
+  exposure: 0.74,
+  envIntensity: 0.78,
+  bloomStrength: 0.34,
+  bloomThreshold: 1.62,
+  bloomRadius: 0.58,
+  bloomTint: new THREE.Color(0xffd7a2),
 };
 
 const STILL = {
   background: new THREE.Color(0x07141c),
   fog: new THREE.Color(0x1a5560),
-  fogDensity: 0.026,
-  exposure: 0.86,
-  envIntensity: 0.72,
-  bloomStrength: 0.28,
-  bloomThreshold: 1.65,
-  bloomRadius: 0.62,
+  fogDensity: 0.024,
+  exposure: 0.78,
+  envIntensity: 0.55,
+  bloomStrength: 0.32,
+  bloomThreshold: 1.18,
+  bloomRadius: 0.7,
   bloomTint: new THREE.Color(0xd5e8ff),
 };
 

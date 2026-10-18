@@ -11,8 +11,23 @@ function mulberry32(seed) {
   };
 }
 
-function reducedMotion() {
-  return window.matchMedia('(max-width: 760px)').matches;
+function isLowQuality() {
+  const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const saveData = navigator.connection && navigator.connection.saveData;
+  return narrow || coarse || saveData;
+}
+
+function pixelRatioCap() {
+  const dpr = window.devicePixelRatio || 1;
+  return isLowQuality() ? Math.min(dpr, 1.15) : Math.min(dpr, 1.6);
+}
+
+function stillWeight(form, t) {
+  const k = Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 1;
+  if (form === 'still') return k;
+  if (form === 'radiant') return 1 - k;
+  return null;
 }
 
 function sparkTexture() {
@@ -137,7 +152,16 @@ const particleFragment = /* glsl */ `
     col = mix(col, cool * mix(1.15, 0.7, vWarm), 1.0 - vWarm);
     float alpha = tex.a * clamp(vAlpha + flare, 0.0, 1.0);
     gl_FragColor = vec4(col, alpha);
-    #include <fog_fragment>
+    // Additive blending must fade alpha. Mixing toward fogColor would add the
+    // still-form teal fog into the motes.
+    #ifdef USE_FOG
+      #ifdef FOG_EXP2
+        float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+      #else
+        float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+      #endif
+      gl_FragColor.a *= 1.0 - fogFactor;
+    #endif
   }
 `;
 
@@ -210,7 +234,7 @@ export function createParticles(marble) {
   const group = new THREE.Group();
   group.name = 'particles';
 
-  const low = reducedMotion();
+  const low = isLowQuality();
   const count = low ? 480 : 1680;
   const sparks = low ? 24 : 84;
   const rand = mulberry32(0x0d57);
@@ -237,7 +261,7 @@ export function createParticles(marble) {
       {
         uTime: { value: 0 },
         uStill: { value: 0 },
-        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+        uPixelRatio: { value: pixelRatioCap() },
         uSprite: { value: sparkTexture() },
       },
     ]),
@@ -255,17 +279,18 @@ export function createParticles(marble) {
   group.add(points);
 
   const wispMap = wispTexture();
-  const wispMat = new THREE.SpriteMaterial({
-    map: wispMap,
-    color: new THREE.Color().setRGB(0.72, 0.58, 0.38),
-    transparent: true,
-    depthWrite: false,
-    opacity: 1,
-    blending: THREE.NormalBlending,
-    fog: true,
-  });
   const wisps = WISPS.slice(0, low ? 3 : WISPS.length).map((spec) => {
-    const sprite = new THREE.Sprite(wispMat);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: wispMap,
+        color: new THREE.Color().setRGB(0.72, 0.58, 0.38),
+        transparent: true,
+        depthWrite: false,
+        opacity: spec.opacity,
+        blending: THREE.NormalBlending,
+        fog: true,
+      }),
+    );
     sprite.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
     sprite.scale.set(spec.scale[0], spec.scale[1], 1);
     sprite.userData = spec;
@@ -275,13 +300,25 @@ export function createParticles(marble) {
 
   let blend = 0;
 
+  function applyWisps() {
+    const fade = 1 - blend;
+    for (const sprite of wisps) {
+      sprite.material.opacity = sprite.userData.opacity * fade;
+      sprite.visible = fade > 0.02;
+    }
+  }
+
+  window.addEventListener('resize', () => {
+    material.uniforms.uPixelRatio.value = pixelRatioCap();
+  });
+
   return {
     group,
     update(time, dt) {
+      void dt;
       material.uniforms.uTime.value = time;
       material.uniforms.uStill.value = blend;
-      const fade = 1 - blend;
-      wispMat.opacity = fade;
+      applyWisps();
       for (const sprite of wisps) {
         const spec = sprite.userData;
         const drift = Math.sin(time * 0.18 + spec.phase);
@@ -291,8 +328,11 @@ export function createParticles(marble) {
       }
     },
     setForm(form, t) {
-      const clamped = THREE.MathUtils.clamp(t ?? 1, 0, 1);
-      blend = form === 'still' ? clamped : 1 - clamped;
+      const next = stillWeight(form, t);
+      if (next === null) return;
+      blend = next;
+      material.uniforms.uStill.value = blend;
+      applyWisps();
     },
   };
 }

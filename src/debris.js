@@ -11,20 +11,64 @@ function mulberry32(seed) {
   };
 }
 
-function reducedMotion() {
-  return window.matchMedia('(max-width: 760px)').matches;
+function isLowQuality() {
+  const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const saveData = navigator.connection && navigator.connection.saveData;
+  return narrow || coarse || saveData;
+}
+
+function stillWeight(form, t) {
+  const k = Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 1;
+  if (form === 'still') return k;
+  if (form === 'radiant') return 1 - k;
+  return null;
+}
+
+// Nearer shards: marble veins mixed with dark stone. The even-index half is
+// mostly the outer ring, which a portrait camera never sees.
+const LOW_INDEX = [1, 3, 5, 9, 11, 13, 15, 16, 17];
+
+function spanScale(low) {
+  if (!low) return { x: 1, y: 1 };
+  const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
+  if (aspect >= 1) return { x: 1, y: 1 };
+  // A 32° portrait camera only sees about a unit of half-width beside the
+  // figure. Pull the kept shards in so the field stays on screen.
+  return {
+    x: Math.max(0.34, Math.min(1, aspect / 1.35)),
+    y: Math.max(0.62, Math.min(1, aspect / 0.75)),
+  };
+}
+
+function additiveFog(material) {
+  material.fog = true;
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <fog_fragment>',
+      `#ifdef USE_FOG
+        #ifdef FOG_EXP2
+          float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+        #else
+          float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+        #endif
+        gl_FragColor.a *= 1.0 - fogFactor;
+      #endif`,
+    );
+  };
+  material.customProgramCacheKey = () => 'additive-fog-alpha';
+  return material;
 }
 
 function facetedShard(rand) {
   const kind = rand();
-  const source =
+  // Polyhedron geometries are already non-indexed, one triangle per face.
+  const geo =
     kind < 0.4
       ? new THREE.OctahedronGeometry(1, 0)
       : kind < 0.75
         ? new THREE.DodecahedronGeometry(1, 0)
         : new THREE.IcosahedronGeometry(1, 0);
-  const geo = source.toNonIndexed();
-  source.dispose();
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i += 3) {
     const sx = 0.55 + rand() * 0.85;
@@ -74,6 +118,7 @@ function goldVeins(geo, rand) {
     }
   }
   edges.dispose();
+  if (kept.length < 6) return null;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(kept, 3));
   return g;
@@ -109,24 +154,31 @@ function stoneMaterial() {
     clearcoatRoughness: 0.42,
     envMapIntensity: 1.05,
     flatShading: true,
-    transparent: true,
     vertexColors: true,
   });
 }
 
 function veinedMaterial(marble) {
-  const mat = marble.body.clone();
-  mat.color = new THREE.Color(0x3a342c);
-  mat.emissive = new THREE.Color(0xffd59a);
-  mat.emissiveIntensity = 1.7;
-  mat.flatShading = true;
-  mat.normalMap = null;
-  mat.transparent = true;
-  mat.opacity = 1;
-  mat.envMapIntensity = 0.85;
-  mat.roughness = 0.7;
-  mat.side = THREE.FrontSide;
-  return mat;
+  const source = marble && marble.body;
+  if (!source) return null;
+  // Share the marble maps without cloning the body material. A clone would
+  // join the marble shader list and pick up its onBeforeCompile program.
+  return new THREE.MeshPhysicalMaterial({
+    map: source.map || null,
+    roughnessMap: source.roughnessMap || null,
+    metalnessMap: source.metalnessMap || null,
+    emissiveMap: source.emissiveMap || null,
+    color: new THREE.Color(0x3a342c),
+    emissive: new THREE.Color(0xffd59a),
+    emissiveIntensity: 1.35,
+    roughness: 0.72,
+    metalness: 1,
+    clearcoat: 0.2,
+    clearcoatRoughness: 0.4,
+    envMapIntensity: 0.85,
+    flatShading: true,
+    side: THREE.FrontSide,
+  });
 }
 
 /**
@@ -137,21 +189,27 @@ export function createDebris(marble) {
   const group = new THREE.Group();
   group.name = 'debris';
 
-  const low = reducedMotion();
-  const layout = low ? LAYOUT.filter((_, i) => i % 2 === 0) : LAYOUT;
+  const low = isLowQuality();
+  const layout = (low ? LOW_INDEX : LAYOUT.map((_, index) => index)).map((index) => ({
+    spec: LAYOUT[index],
+    index,
+  }));
+  const fit = spanScale(low);
   const stone = stoneMaterial();
   const veined = veinedMaterial(marble);
-  const veinMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color().setRGB(1.9, 1.35, 0.62),
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
+  const veinMat = additiveFog(
+    new THREE.LineBasicMaterial({
+      color: new THREE.Color().setRGB(1.9, 1.35, 0.62),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
 
-  const shards = layout.map((spec, index) => {
+  const shards = layout.map(({ spec, index }) => {
     const rand = mulberry32(0x5eed + index * 131);
     const geo = facetedShard(rand);
-    const useMarble = spec[4] === 1;
+    const useMarble = spec[4] === 1 && veined;
     if (useMarble) windowUvs(geo, rand);
 
     if (!useMarble) {
@@ -168,7 +226,8 @@ export function createDebris(marble) {
     }
 
     const mesh = new THREE.Mesh(geo, useMarble ? veined : stone);
-    mesh.position.set(spec[0], spec[1], spec[2]);
+    const y = 1.2 + (spec[1] - 1.2) * fit.y;
+    mesh.position.set(spec[0] * fit.x, y, spec[2]);
     mesh.scale.setScalar(spec[3] * (0.85 + rand() * 0.35));
     mesh.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
     mesh.userData = {
@@ -185,8 +244,8 @@ export function createDebris(marble) {
     };
 
     if (!useMarble && rand() < 0.72) {
-      const lines = new THREE.LineSegments(goldVeins(geo, rand), veinMat);
-      mesh.add(lines);
+      const veinGeo = goldVeins(geo, rand);
+      if (veinGeo) mesh.add(new THREE.LineSegments(veinGeo, veinMat));
     }
 
     group.add(mesh);
@@ -195,16 +254,27 @@ export function createDebris(marble) {
 
   let blend = 0;
 
+  function applyFade() {
+    const fade = 1 - blend;
+    const fading = fade < 0.995;
+    for (const mat of [stone, veined]) {
+      if (!mat) continue;
+      if (mat.transparent !== fading) {
+        mat.transparent = fading;
+        mat.needsUpdate = true;
+      }
+      mat.opacity = fade;
+      mat.depthWrite = fade > 0.25;
+    }
+    veinMat.opacity = fade;
+    const show = fade > 0.02;
+    for (const mesh of shards) mesh.visible = show;
+  }
+
   return {
     group,
     update(time, dt) {
-      const fade = 1 - blend * 0.96;
-      stone.opacity = fade;
-      veined.opacity = fade;
-      veinMat.opacity = fade;
-      const write = fade > 0.2;
-      stone.depthWrite = write;
-      veined.depthWrite = write;
+      applyFade();
       for (const mesh of shards) {
         const u = mesh.userData;
         mesh.rotation.x += u.rot.x * dt;
@@ -219,8 +289,10 @@ export function createDebris(marble) {
       }
     },
     setForm(form, t) {
-      const clamped = THREE.MathUtils.clamp(t ?? 1, 0, 1);
-      blend = form === 'still' ? clamped : 1 - clamped;
+      const next = stillWeight(form, t);
+      if (next === null) return;
+      blend = next;
+      applyFade();
     },
   };
 }

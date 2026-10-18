@@ -15,8 +15,17 @@ const params = new URLSearchParams(location.search);
 const showUi = params.get('ui') !== '0';
 if (!showUi) document.getElementById('bar').style.display = 'none';
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+function qualityPixelRatio() {
+  const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const saveData = navigator.connection && navigator.connection.saveData;
+  const low = narrow || coarse || saveData;
+  const dpr = window.devicePixelRatio || 1;
+  return low ? Math.min(dpr, 1.15) : Math.min(dpr, 1.6);
+}
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(qualityPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x07060a, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -80,30 +89,43 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.in
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
+renderer.info.autoReset = false;
+
 const clock = new THREE.Clock();
 let form = params.get('form') === 'still' ? 'still' : 'radiant';
 let shown = form === 'still' ? 1 : 0;
 
+const audit = params.get('audit') === '1';
+window.__logs = [];
+for (const level of ['error', 'warn']) {
+  const orig = console[level].bind(console);
+  console[level] = (...args) => {
+    window.__logs.push({
+      level,
+      text: args
+        .map((item) => (item && item.stack) || (item && item.message) || String(item))
+        .join('\n')
+        .slice(0, 700),
+    });
+    orig(...args);
+  };
+}
+
 function applyForm() {
   const goingStill = form === 'still';
   const t = goingStill ? shown : 1 - shown;
-  rings.setForm(form, t);
-  particles.setForm(form, t);
-  debris.setForm(form, t);
+  for (const mod of [marble, angel, rings, particles, debris]) {
+    if (typeof mod.setForm === 'function') mod.setForm(form, t);
+  }
 }
 
-const origError = console.error.bind(console);
-console.error = (...args) => {
-  origError(...args);
-  const note = document.createElement('pre');
-  note.textContent = args
-    .map((item) => (typeof item === 'string' ? item : item?.message || String(item)))
-    .join('\n')
-    .slice(0, 1800);
-  note.style.cssText =
-    'position:fixed;top:0;left:0;right:0;max-height:40vh;overflow:auto;color:#ffb4a8;background:rgba(0,0,0,0.85);z-index:9;font:12px/1.4 ui-monospace,monospace;padding:8px;white-space:pre-wrap';
-  document.body.appendChild(note);
+window.__effects = { rings, particles, debris, marble, angel, renderer, scene, camera };
+window.__drive = (next, value) => {
+  form = next === 'still' ? 'still' : 'radiant';
+  shown = Math.min(1, Math.max(0, Number.isFinite(value) ? value : 1));
+  applyForm();
 };
+if (audit) window.__frames = [];
 
 applyForm();
 
@@ -124,7 +146,9 @@ function resize() {
   const height = window.innerHeight;
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(qualityPixelRatio());
   renderer.setSize(width, height);
+  composer.setPixelRatio(qualityPixelRatio());
   composer.setSize(width, height);
 }
 
@@ -139,12 +163,29 @@ function frame() {
   shown = THREE.MathUtils.damp(shown, target, 2.4, dt);
   applyForm();
   controls.update();
+  if (typeof marble.update === 'function') marble.update(time, dt);
   angel.update(time, dt);
   rings.update(time, dt);
   particles.update(time, dt);
   debris.update(time, dt);
+  renderer.info.reset();
+  const start = performance.now();
   composer.render();
+  const frameMs = performance.now() - start;
   frames += 1;
+  if (audit) {
+    const info = renderer.info;
+    window.__frames.push({
+      frameMs,
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      lines: info.render.lines,
+      points: info.render.points,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+    });
+    info.reset();
+  }
   if (frames === 2) window.__ready = true;
   requestAnimationFrame(frame);
 }

@@ -26,6 +26,42 @@ function glyphLoops(radius) {
   return Math.max(1, Math.round((radius / REF_RADIUS) * 2));
 }
 
+function isLowQuality() {
+  const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const saveData = navigator.connection && navigator.connection.saveData;
+  return narrow || coarse || saveData;
+}
+
+// t is eased progress toward `form` (0 = the other form, 1 = fully there).
+function stillWeight(form, t) {
+  const k = Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 1;
+  if (form === 'still') return k;
+  if (form === 'radiant') return 1 - k;
+  return null;
+}
+
+// Scale alpha in fog instead of mixing toward fogColor. These materials use
+// additive blending, and the still-form fog is teal.
+function additiveFog(material) {
+  material.fog = true;
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <fog_fragment>',
+      `#ifdef USE_FOG
+        #ifdef FOG_EXP2
+          float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+        #else
+          float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+        #endif
+        gl_FragColor.a *= 1.0 - fogFactor;
+      #endif`,
+    );
+  };
+  material.customProgramCacheKey = () => 'additive-fog-alpha';
+  return material;
+}
+
 function drawGlyph(ctx, kind, s) {
   const k = kind % 16;
   ctx.beginPath();
@@ -142,9 +178,9 @@ function drawGlyph(ctx, kind, s) {
   ctx.stroke();
 }
 
-function createGlyphTexture() {
-  const width = 4096;
+function createGlyphTexture(width = 4096) {
   const height = 256;
+  const scale = width / 4096;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -155,7 +191,7 @@ function createGlyphTexture() {
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#fff8ea';
   ctx.fillStyle = '#fff8ea';
-  ctx.lineWidth = 16;
+  ctx.lineWidth = Math.max(8, 16 * scale);
 
   for (let i = 0; i < GLYPHS_PER_LOOP; i++) {
     const cx = cell * (i + 0.5);
@@ -164,11 +200,11 @@ function createGlyphTexture() {
     // Taller than wide in the strip so the glyphs stay nearly square once
     // the band is wrapped around the ring.
     ctx.scale(0.62, 1.45);
-    drawGlyph(ctx, i * 3 + 1, 46);
+    drawGlyph(ctx, i * 3 + 1, 46 * scale);
     ctx.restore();
 
     ctx.beginPath();
-    ctx.arc(cell * i, height * 0.5, 7, 0, Math.PI * 2);
+    ctx.arc(cell * i, height * 0.5, 7 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -207,14 +243,21 @@ function annulusGeometry(inner, outer, segments, repeats) {
 }
 
 const crispVertex = /* glsl */ `
+  #include <common>
+  #include <fog_pars_vertex>
   varying vec2 vUv;
   void main() {
     vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
   }
 `;
 
 const crispFragment = /* glsl */ `
+  #include <common>
+  #include <fog_pars_fragment>
+
   uniform sampler2D uGlyphs;
   uniform vec3 uColor;
   uniform float uFade;
@@ -234,12 +277,16 @@ const crispFragment = /* glsl */ `
     if (alpha < 0.04) discard;
     vec3 col = mix(uColor, uColor * 1.28, borders);
     gl_FragColor = vec4(col, alpha);
+    #include <fog_fragment>
   }
 `;
 
 const glowVertex = crispVertex;
 
 const glowFragment = /* glsl */ `
+  #include <common>
+  #include <fog_pars_fragment>
+
   uniform vec3 uColor;
   uniform float uFade;
   varying vec2 vUv;
@@ -247,9 +294,13 @@ const glowFragment = /* glsl */ `
   void main() {
     float d = abs(vUv.y - 0.5) * 2.0;
     float glow = pow(1.0 - smoothstep(0.05, 1.0, d), 1.45);
-    float alpha = glow * uFade;
+    float alpha = glow * uFade * 0.72;
+    #ifdef USE_FOG
+      float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+      alpha *= 1.0 - fogFactor;
+    #endif
     if (alpha < 0.015) discard;
-    gl_FragColor = vec4(uColor, alpha * 0.72);
+    gl_FragColor = vec4(uColor, alpha);
   }
 `;
 
@@ -372,7 +423,7 @@ function createMandalaTexture() {
   return tex;
 }
 
-function createRing(spec, crispMat, glowMat) {
+function createRing(spec, crispMat, glowMat, segments) {
   const holder = new THREE.Group();
   holder.position.set(spec.position[0], spec.position[1], spec.position[2]);
   holder.rotation.x = spec.tiltX;
@@ -384,9 +435,9 @@ function createRing(spec, crispMat, glowMat) {
   const repeats = glyphLoops(spec.radius);
   const inner = spec.radius - spec.half;
   const outer = spec.radius + spec.half;
-  const crisp = new THREE.Mesh(annulusGeometry(inner, outer, 320, repeats), crispMat);
+  const crisp = new THREE.Mesh(annulusGeometry(inner, outer, segments, repeats), crispMat);
   const glow = new THREE.Mesh(
-    annulusGeometry(spec.radius - spec.half * 2.35, spec.radius + spec.half * 2.35, 160, 1),
+    annulusGeometry(spec.radius - spec.half * 2.35, spec.radius + spec.half * 2.35, Math.max(64, segments >> 1), 1),
     glowMat,
   );
   glow.position.z = -0.004;
@@ -394,7 +445,7 @@ function createRing(spec, crispMat, glowMat) {
   crisp.renderOrder = 2;
   spin.add(glow, crisp);
 
-  return { holder, spin, speed: spec.spin, tiltX: spec.tiltX, tiltZ: spec.tiltZ };
+  return { holder, spin, speed: spec.spin, tiltX: spec.tiltX, tiltZ: spec.tiltZ, crisp, glow };
 }
 
 /**
@@ -405,37 +456,52 @@ function createRing(spec, crispMat, glowMat) {
 export function createRings() {
   const group = new THREE.Group();
   group.name = 'rings';
+  // Motion stays on an inner rig so callers can position `group` themselves.
+  const rig = new THREE.Group();
+  rig.name = 'rings-rig';
+  group.add(rig);
 
-  const glyphTex = createGlyphTexture();
+  const low = isLowQuality();
+  const glyphTex = createGlyphTexture(low ? 2048 : 4096);
+  const fogUniforms = THREE.UniformsLib.fog;
   const crispMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uGlyphs: { value: glyphTex },
-      uColor: { value: new THREE.Color().setRGB(1.85, 1.28, 0.62) },
-      uFade: { value: 1 },
-    },
+    uniforms: THREE.UniformsUtils.merge([
+      fogUniforms,
+      {
+        uGlyphs: { value: glyphTex },
+        uColor: { value: new THREE.Color().setRGB(1.85, 1.28, 0.62) },
+        uFade: { value: 1 },
+      },
+    ]),
     vertexShader: crispVertex,
     fragmentShader: crispFragment,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.NormalBlending,
+    fog: true,
   });
   const glowMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color().setRGB(1.35, 0.78, 0.28) },
-      uFade: { value: 1 },
-    },
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        uColor: { value: new THREE.Color().setRGB(1.35, 0.78, 0.28) },
+        uFade: { value: 1 },
+      },
+    ]),
     vertexShader: glowVertex,
     fragmentShader: glowFragment,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
+    fog: true,
   });
 
+  const segments = low ? 160 : 288;
   const rings = RING_SPECS.map((spec) => {
-    const ring = createRing(spec, crispMat, glowMat);
-    group.add(ring.holder);
+    const ring = createRing(spec, crispMat, glowMat, segments);
+    rig.add(ring.holder);
     return ring;
   });
 
@@ -443,46 +509,54 @@ export function createRings() {
   halo.name = 'halo';
   halo.position.set(0, 2.55, -0.82);
   halo.rotation.x = -0.16;
-  group.add(halo);
+  rig.add(halo);
 
   const haloMap = createHaloTexture();
   const haloPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(2.35, 2.35),
-    new THREE.MeshBasicMaterial({
-      map: haloMap,
-      color: new THREE.Color().setRGB(3.4, 2.05, 0.95),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      opacity: 1,
-    }),
+    additiveFog(
+      new THREE.MeshBasicMaterial({
+        map: haloMap,
+        color: new THREE.Color().setRGB(3.4, 2.05, 0.95),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        opacity: 1,
+      }),
+    ),
   );
   const core = new THREE.Mesh(
     new THREE.TorusGeometry(0.78, 0.011, 12, 160),
-    new THREE.MeshBasicMaterial({
-      color: new THREE.Color().setRGB(6.5, 3.6, 1.35),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
+    additiveFog(
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setRGB(6.5, 3.6, 1.35),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    ),
   );
   const inner = new THREE.Mesh(
     new THREE.TorusGeometry(0.66, 0.0035, 8, 128),
-    new THREE.MeshBasicMaterial({
-      color: new THREE.Color().setRGB(3.2, 2.1, 1.05),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
+    additiveFog(
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setRGB(3.2, 2.1, 1.05),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    ),
   );
   const outer = new THREE.Mesh(
     new THREE.TorusGeometry(0.9, 0.0032, 8, 140),
-    new THREE.MeshBasicMaterial({
-      color: new THREE.Color().setRGB(2.6, 1.7, 0.75),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
+    additiveFog(
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setRGB(2.6, 1.7, 0.75),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    ),
   );
   halo.add(haloPlane, inner, core, outer);
 
@@ -500,7 +574,7 @@ export function createRings() {
   mandala.position.set(0, 2.48, -0.96);
   mandala.name = 'mandala';
   mandala.visible = false;
-  group.add(mandala);
+  rig.add(mandala);
 
   const haloMats = [haloPlane.material, core.material, inner.material, outer.material];
   let blend = 0;
@@ -509,10 +583,15 @@ export function createRings() {
     const gold = 1 - blend;
     crispMat.uniforms.uFade.value = gold;
     glowMat.uniforms.uFade.value = gold;
+    const showGold = gold > 0.02;
+    for (const ring of rings) {
+      ring.crisp.visible = showGold;
+      ring.glow.visible = showGold;
+    }
     for (const mat of haloMats) mat.opacity = gold;
     mandala.material.opacity = blend * 0.5;
     mandala.visible = blend > 0.02;
-    halo.visible = gold > 0.02;
+    halo.visible = showGold;
   }
 
   return {
@@ -526,13 +605,13 @@ export function createRings() {
       }
       halo.rotation.z = Math.sin(time * 0.05) * 0.04;
       mandala.rotation.z = -time * 0.018 * blend;
-      group.position.y = Math.sin(time * 0.45) * 0.055;
       const pulse = 0.9 + 0.1 * Math.sin(time * 0.8);
       glowMat.uniforms.uFade.value = (1 - blend) * pulse;
     },
     setForm(form, t) {
-      const clamped = THREE.MathUtils.clamp(t ?? 1, 0, 1);
-      blend = form === 'still' ? clamped : 1 - clamped;
+      const next = stillWeight(form, t);
+      if (next === null) return;
+      blend = next;
       apply();
     },
   };

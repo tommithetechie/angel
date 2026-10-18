@@ -1,69 +1,5 @@
 import * as THREE from 'three';
 
-function softCircle() {
-  const size = 64;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.35, 'rgba(255,255,255,0.65)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function makePoints(count, radius, height, color, size, sprite) {
-  const positions = new Float32Array(count * 3);
-  const baseX = new Float32Array(count);
-  const speeds = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * radius;
-    baseX[i] = Math.cos(a) * r;
-    positions[i * 3] = baseX[i];
-    positions[i * 3 + 1] = Math.random() * height - height * 0.28;
-    positions[i * 3 + 2] = (Math.random() - 0.5) * radius * 0.85;
-    speeds[i] = 0.04 + Math.random() * 0.16;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({
-    color,
-    map: sprite,
-    size,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    sizeAttenuation: true,
-    opacity: 0.9,
-  });
-  const points = new THREE.Points(geo, mat);
-  points.frustumCulled = false;
-  return { points, speeds, height, baseX };
-}
-
-function rockGeometry(seed) {
-  const rand = mulberry32(seed);
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const scale = 0.78 + rand() * 0.4;
-    pos.setXYZ(i, pos.getX(i) * scale, pos.getY(i) * scale, pos.getZ(i) * scale);
-  }
-  geo.computeVertexNormals();
-  const uv = geo.attributes.uv;
-  const ox = rand();
-  const oy = rand();
-  for (let i = 0; i < uv.count; i++) {
-    uv.setXY(i, uv.getX(i) * 0.22 + ox, uv.getY(i) * 0.22 + oy);
-  }
-  return geo;
-}
-
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -75,75 +11,288 @@ function mulberry32(seed) {
   };
 }
 
-const ROCKS = [
-  { pos: [-2.55, 2.85, 0.7], scale: 0.1, marble: false },
-  { pos: [-2.85, 1.15, 1.05], scale: 0.16, marble: false },
-  { pos: [-2.15, -0.15, 1.15], scale: 0.09, marble: true },
-  { pos: [-2.4, -0.85, 0.55], scale: 0.18, marble: false },
-  { pos: [2.6, 2.15, 0.85], scale: 0.11, marble: false },
-  { pos: [2.9, 0.45, 1.1], scale: 0.15, marble: false },
-  { pos: [2.2, -0.75, 0.7], scale: 0.12, marble: true },
-  { pos: [1.15, -1.15, 1.15], scale: 0.08, marble: false },
-  { pos: [-1.15, 3.55, -0.2], scale: 0.07, marble: false },
-  { pos: [0.9, 3.65, 0.45], scale: 0.06, marble: false },
-  { pos: [-3.05, 2.05, 0.15], scale: 0.13, marble: false },
-  { pos: [3.05, 2.7, 0.2], scale: 0.1, marble: false },
+function reducedMotion() {
+  return window.matchMedia('(max-width: 760px)').matches;
+}
+
+function sparkTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const c = size / 2;
+  const g = ctx.createRadialGradient(c, c, 0, c, c, c);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.12, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.28, 'rgba(255,255,255,0.45)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.12)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.NoColorSpace;
+  return tex;
+}
+
+function wispTexture() {
+  const rand = mulberry32(0xc0ffee);
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  for (let i = 0; i < 8; i++) {
+    const x = 30 + rand() * 190;
+    const y = 40 + rand() * 170;
+    const r = 36 + rand() * 58;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const alpha = 0.08 + rand() * 0.16;
+    g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    g.addColorStop(0.45, `rgba(255,255,255,${alpha * 0.35})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.NoColorSpace;
+  return tex;
+}
+
+const particleVertex = /* glsl */ `
+  #include <common>
+  #include <fog_pars_vertex>
+
+  attribute float aSize;
+  attribute float aRadius;
+  attribute float aSpeed;
+  attribute float aPhase;
+  attribute float aY0;
+  attribute float aYAmp;
+  attribute float aEcc;
+  attribute float aTilt;
+  attribute float aTwinkle;
+  attribute float aSpark;
+  attribute float aSeed;
+
+  uniform float uTime;
+  uniform float uStill;
+  uniform float uPixelRatio;
+
+  varying float vAlpha;
+  varying float vWarm;
+  varying float vBurst;
+  varying float vSeed;
+
+  void main() {
+    float ang = aPhase + uTime * aSpeed * mix(1.0, 0.35, uStill);
+    float breathe = 1.0 + 0.05 * sin(uTime * 0.28 + aPhase);
+    float r = aRadius * breathe;
+    vec3 p = vec3(cos(ang) * r, 0.0, sin(ang) * r * aEcc);
+    float cx = cos(aTilt);
+    float sx = sin(aTilt);
+    float y = -p.z * sx;
+    float z = p.z * cx;
+    p.y = y + aY0 + sin(uTime * 0.22 + aSeed * 6.28318) * aYAmp;
+    p.z = z;
+
+    vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    float tw = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * aTwinkle + aPhase));
+    float burst = pow(max(sin(uTime * 0.62 + aSeed * 57.0), 0.0), 22.0) * aSpark * (1.0 - uStill);
+    float gate = mix(1.0, smoothstep(0.1, 0.015, aSeed), uStill);
+
+    vAlpha = gate * tw * mix(1.0, 0.55, uStill);
+    vWarm = 1.0 - uStill;
+    vBurst = burst;
+    vSeed = aSeed;
+
+    float size = aSize * mix(1.0, 0.62, uStill);
+    size *= 0.72 + 0.5 * tw;
+    size += burst * aSize * 2.8;
+    gl_PointSize = clamp(size * uPixelRatio * (7.4 / max(-mvPosition.z, 0.2)), 0.0, 64.0);
+
+    #include <fog_vertex>
+  }
+`;
+
+const particleFragment = /* glsl */ `
+  #include <common>
+  #include <fog_pars_fragment>
+
+  uniform sampler2D uSprite;
+  varying float vAlpha;
+  varying float vWarm;
+  varying float vBurst;
+  varying float vSeed;
+
+  void main() {
+    vec4 tex = texture2D(uSprite, gl_PointCoord);
+    if (tex.a < 0.03) discard;
+    float tone = fract(vSeed * 7.13);
+    vec3 gold = mix(vec3(1.15, 0.68, 0.28), vec3(1.45, 1.12, 0.68), tone);
+    vec3 hot = vec3(3.1, 2.35, 1.55);
+    vec3 cool = vec3(0.72, 0.84, 1.08);
+    float flare = clamp(vBurst * 1.35, 0.0, 1.0);
+    vec3 col = mix(gold, hot, flare);
+    col = mix(col, cool * mix(1.15, 0.7, vWarm), 1.0 - vWarm);
+    float alpha = tex.a * clamp(vAlpha + flare, 0.0, 1.0);
+    gl_FragColor = vec4(col, alpha);
+    #include <fog_fragment>
+  }
+`;
+
+const WISPS = [
+  { pos: [-1.05, -0.15, 0.55], scale: [3.1, 1.15], opacity: 0.2, phase: 0.4 },
+  { pos: [0.85, -0.45, 0.35], scale: [3.6, 1.35], opacity: 0.16, phase: 1.7 },
+  { pos: [-1.8, 0.15, -0.15], scale: [2.4, 0.95], opacity: 0.13, phase: 2.4 },
+  { pos: [1.65, -0.05, 0.7], scale: [2.6, 1.05], opacity: 0.14, phase: 0.9 },
+  { pos: [0.15, -0.85, 0.95], scale: [4.0, 1.45], opacity: 0.12, phase: 3.1 },
+  { pos: [-0.35, 0.35, -0.55], scale: [2.2, 0.85], opacity: 0.1, phase: 4.2 },
+  { pos: [0.4, -0.25, 1.35], scale: [2.8, 1.0], opacity: 0.11, phase: 5.0 },
 ];
 
+function buildAttributes(count, sparks, rand) {
+  const size = new Float32Array(count);
+  const radius = new Float32Array(count);
+  const speed = new Float32Array(count);
+  const phase = new Float32Array(count);
+  const y0 = new Float32Array(count);
+  const yAmp = new Float32Array(count);
+  const ecc = new Float32Array(count);
+  const tilt = new Float32Array(count);
+  const twinkle = new Float32Array(count);
+  const spark = new Float32Array(count);
+  const seed = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const roll = rand();
+    let r;
+    let y;
+    let px;
+    if (roll < 0.42) {
+      r = 0.35 + rand() * 1.55;
+      y = -0.2 + rand() * 3.5;
+      px = 1.5 + rand() * 2.1;
+    } else if (roll < 0.82) {
+      r = 1.2 + rand() * 2.3;
+      y = -0.9 + rand() * 5.0;
+      px = 1.3 + rand() * 2.4;
+    } else {
+      r = 2.8 + rand() * 2.4;
+      y = -1.3 + rand() * 5.6;
+      px = 1.2 + rand() * 1.8;
+    }
+    const isSpark = i >= count - sparks;
+    size[i] = isSpark ? 5.5 + rand() * 4.5 : px;
+    radius[i] = r;
+    const dir = rand() < 0.5 ? -1 : 1;
+    speed[i] = dir * (0.045 + rand() * 0.28) * (isSpark ? 1.25 : 1);
+    phase[i] = rand() * Math.PI * 2;
+    y0[i] = y;
+    yAmp[i] = 0.08 + rand() * 0.28;
+    ecc[i] = 0.5 + rand() * 0.62;
+    tilt[i] = (rand() - 0.5) * 1.7;
+    twinkle[i] = 1.4 + rand() * 4.2;
+    spark[i] = isSpark ? 1 : 0;
+    seed[i] = rand();
+  }
+
+  return { size, radius, speed, phase, y0, yAmp, ecc, tilt, twinkle, spark, seed };
+}
+
+/**
+ * Gold dust, orbiting sparks, and faint wisps near the floor.
+ * `marble` is accepted so the shared signature stays stable.
+ * Still form keeps a sparse field of cool-white motes.
+ */
 export function createParticles(marble) {
+  void marble;
   const group = new THREE.Group();
   group.name = 'particles';
-  const sprite = softCircle();
 
-  const dust = makePoints(860, 3.6, 5.6, 0xe7c98a, 0.02, sprite);
-  const motes = makePoints(140, 3.1, 5.2, 0xffe3b0, 0.055, sprite);
-  group.add(dust.points, motes.points);
+  const low = reducedMotion();
+  const count = low ? 480 : 1680;
+  const sparks = low ? 24 : 84;
+  const rand = mulberry32(0x0d57);
 
-  const stone = new THREE.MeshStandardMaterial({
-    color: 0x141311,
-    roughness: 0.96,
-    metalness: 0.04,
-    envMapIntensity: 0.15,
+  const attrs = buildAttributes(count, sparks, rand);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
+  const bind = (name, array) => geo.setAttribute(name, new THREE.BufferAttribute(array, 1));
+  bind('aSize', attrs.size);
+  bind('aRadius', attrs.radius);
+  bind('aSpeed', attrs.speed);
+  bind('aPhase', attrs.phase);
+  bind('aY0', attrs.y0);
+  bind('aYAmp', attrs.yAmp);
+  bind('aEcc', attrs.ecc);
+  bind('aTilt', attrs.tilt);
+  bind('aTwinkle', attrs.twinkle);
+  bind('aSpark', attrs.spark);
+  bind('aSeed', attrs.seed);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        uTime: { value: 0 },
+        uStill: { value: 0 },
+        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+        uSprite: { value: sparkTexture() },
+      },
+    ]),
+    vertexShader: particleVertex,
+    fragmentShader: particleFragment,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: true,
   });
 
-  const rocks = ROCKS.map((spec, i) => {
-    const rand = mulberry32(0x51ed + i * 97);
-    const mesh = new THREE.Mesh(rockGeometry(0x51ed + i * 97), spec.marble ? marble.body : stone);
-    mesh.position.set(...spec.pos);
-    mesh.scale.setScalar(spec.scale);
-    mesh.rotation.set(rand() * 3, rand() * 3, rand() * 2);
-    mesh.userData = {
-      base: mesh.position.clone(),
-      sx: (rand() - 0.5) * 0.35,
-      sy: (rand() - 0.5) * 0.45,
-      phase: rand() * Math.PI * 2,
-    };
-    group.add(mesh);
-    return mesh;
+  const points = new THREE.Points(geo, material);
+  points.frustumCulled = false;
+  points.renderOrder = 3;
+  group.add(points);
+
+  const wispMap = wispTexture();
+  const wispMat = new THREE.SpriteMaterial({
+    map: wispMap,
+    color: new THREE.Color().setRGB(0.72, 0.58, 0.38),
+    transparent: true,
+    depthWrite: false,
+    opacity: 1,
+    blending: THREE.NormalBlending,
+    fog: true,
+  });
+  const wisps = WISPS.slice(0, low ? 3 : WISPS.length).map((spec) => {
+    const sprite = new THREE.Sprite(wispMat);
+    sprite.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
+    sprite.scale.set(spec.scale[0], spec.scale[1], 1);
+    sprite.userData = spec;
+    group.add(sprite);
+    return sprite;
   });
 
-  const clouds = [dust, motes];
+  let blend = 0;
 
   return {
     group,
     update(time, dt) {
-      for (const cloud of clouds) {
-        const pos = cloud.points.geometry.attributes.position;
-        for (let i = 0; i < cloud.speeds.length; i++) {
-          let y = pos.getY(i) + cloud.speeds[i] * dt;
-          if (y > cloud.height * 0.78) y = -cloud.height * 0.28;
-          pos.setY(i, y);
-          pos.setX(i, cloud.baseX[i] + Math.sin(time * 0.35 + i) * 0.08);
-        }
-        pos.needsUpdate = true;
+      material.uniforms.uTime.value = time;
+      material.uniforms.uStill.value = blend;
+      const fade = 1 - blend;
+      wispMat.opacity = fade;
+      for (const sprite of wisps) {
+        const spec = sprite.userData;
+        const drift = Math.sin(time * 0.18 + spec.phase);
+        sprite.position.x = spec.pos[0] + drift * 0.18;
+        sprite.position.y = spec.pos[1] + Math.cos(time * 0.13 + spec.phase) * 0.08 - blend * 0.35;
+        sprite.scale.set(spec.scale[0] * (1 + drift * 0.04), spec.scale[1], 1);
       }
-      for (const rock of rocks) {
-        const { base, sx, sy, phase } = rock.userData;
-        rock.rotation.x += sx * dt;
-        rock.rotation.y += sy * dt;
-        rock.position.y = base.y + Math.sin(time * 0.4 + phase) * 0.07;
-        rock.position.x = base.x + Math.sin(time * 0.17 + phase) * 0.03;
-      }
+    },
+    setForm(form, t) {
+      const clamped = THREE.MathUtils.clamp(t ?? 1, 0, 1);
+      blend = form === 'still' ? clamped : 1 - clamped;
     },
   };
 }

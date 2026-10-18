@@ -605,7 +605,7 @@ vec4 marbleSample(sampler2D tex, vec3 p, vec3 w) {
 `;
 
 const BODY_MAP = /* glsl */ `
-vec3 marbleP = (uMarbleMatrix * vec4(vMarblePos, 1.0)).xyz * 0.48;
+vec3 marbleP = (uMarbleMatrix * vec4(vMarblePos, 1.0)).xyz * 0.17;
 vec3 marbleN = normalize(uMarbleNormalMatrix * vMarbleNormal);
 vec3 marbleW = abs(marbleN);
 marbleW = pow(max(marbleW, vec3(1.0e-4)), vec3(4.0));
@@ -647,7 +647,7 @@ const BODY_NORMAL = /* glsl */ `
   vec3 r2 = cross(normal, sigmaX);
   float det = dot(sigmaX, r1);
   vec3 grad = sign(det) * (dFdx(marbleH) * r1 + dFdy(marbleH) * r2);
-  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 5.6);
+  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 0.9);
   normal = mix(normal, bumped, uProject);
 }
 `;
@@ -831,7 +831,7 @@ function bindShader(material, uniforms, projectFeathers) {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v5' : 'marble-body-v5');
+  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v6' : 'marble-body-v6');
   if (!projectFeathers) {
     material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
       const project = uvSpan(geometry) > 0.75 ? 1 : 0;

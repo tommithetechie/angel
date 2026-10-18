@@ -66,6 +66,26 @@ canvas {
   opacity: 0;
 }
 
+.hud-credit {
+  position: absolute;
+  left: max(32px, env(safe-area-inset-left));
+  bottom: max(118px, calc(env(safe-area-inset-bottom) + 108px));
+  margin: 0;
+  max-width: min(22rem, 72vw);
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+  opacity: 0.78;
+  pointer-events: auto;
+  color: inherit;
+  text-decoration: none;
+}
+
+.hud-credit:hover {
+  opacity: 1;
+}
+
 .hud-toggle {
   pointer-events: auto;
   position: absolute;
@@ -117,6 +137,12 @@ canvas {
     bottom: max(78px, calc(env(safe-area-inset-bottom) + 64px));
     font-size: 14px;
     max-width: min(16rem, 70vw);
+  }
+
+  .hud-credit {
+    left: max(18px, env(safe-area-inset-left));
+    bottom: max(156px, calc(env(safe-area-inset-bottom) + 142px));
+    max-width: min(18rem, 86vw);
   }
 
   .hud-toggle {

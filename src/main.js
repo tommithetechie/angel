@@ -40,9 +40,20 @@ scene.background = new THREE.Color(0x040308);
 scene.fog = new THREE.FogExp2(0x09080d, 0.012);
 
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.12, 140);
-const lookAt = new THREE.Vector3(0.03, 1.52, 0);
+const lookAt = new THREE.Vector3(0.03, 1.48, 0);
+const REST_Z = 9.35;
+const WING_HALF_WIDTH = 2.7;
 const introFrom = new THREE.Vector3(0.55, 1.82, 15.2);
-const introTo = new THREE.Vector3(0.12, 1.26, 9.35);
+const introTo = new THREE.Vector3(0.12, 1.26, REST_Z);
+let framedZ = REST_Z;
+
+function framedDistance() {
+  const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
+  const halfAngle = Math.tan((camera.fov * Math.PI) / 360);
+  const widthAtRest = REST_Z * halfAngle * aspect;
+  if (widthAtRest >= WING_HALF_WIDTH) return REST_Z;
+  return WING_HALF_WIDTH / Math.max(halfAngle * aspect, 0.05);
+}
 camera.position.copy(settle ? introTo : introFrom);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -54,7 +65,7 @@ controls.zoomSpeed = 0.65;
 controls.enablePan = true;
 controls.screenSpacePanning = false;
 controls.minDistance = 3.6;
-controls.maxDistance = 18;
+controls.maxDistance = 28;
 controls.minPolarAngle = 0.42;
 controls.maxPolarAngle = Math.PI * 0.58;
 controls.autoRotateSpeed = 0.38;
@@ -296,6 +307,13 @@ function resize() {
     composer.setSize(width, height);
   }
   composerSized = true;
+  const nextZ = framedDistance();
+  const previousZ = framedZ;
+  framedZ = nextZ;
+  introTo.z = nextZ;
+  if (!interacting && Math.abs(camera.position.z - previousZ) < 0.8) {
+    camera.position.z = nextZ;
+  }
   resizeLock = false;
 }
 
@@ -484,7 +502,14 @@ function createHud() {
   button.className = 'hud-toggle';
   button.type = 'button';
 
-  root.append(title, caption, button);
+  const credit = document.createElement('a');
+  credit.className = 'hud-credit';
+  credit.href = 'https://sketchfab.com/3d-models/virgo-369b136160b14d2d9067c171555b85aa';
+  credit.target = '_blank';
+  credit.rel = 'noreferrer';
+  credit.textContent = '"Virgo" by Ognomdrol (Sketchfab), CC BY 4.0';
+
+  root.append(title, caption, credit, button);
   document.body.append(root);
 
   const copy = {

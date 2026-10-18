@@ -1,4 +1,27 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/**
+ * Virgo's body, with the scene's six feathered wings.
+ *
+ * The sculpt is one static mesh: a gowned figure and a single pair of wings.
+ * Those wings are removed and the existing six-wing rig is hung on the back,
+ * so radiant still opens and still still folds, and the feathers are not a
+ * second copy cutting through the gown. Wheat and staff are the same shell as
+ * the hands, so they stay and take the marble.
+ *
+ * Contract: { group, update(time, dt), setForm(form, t), dispose }
+ *   form — 'radiant' or 'still'
+ *   t    — 0 at the other form, 1 at the named form
+ */
+
+const TARGET_BODY_HEIGHT = 2.16;
+const HEM_Y = 0.2;
+const WING_REACH = 0.76;
+const BACK_PAD = 0.16;
+
+const TEXTURE_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'];
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -26,60 +49,11 @@ const _x = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
-const _e = new THREE.Euler(0, 0, 0, 'XYZ');
-const _p = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _c = new THREE.Vector3();
-const _d = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _fwd = new THREE.Vector3(0, 0, 1);
-
-function quatEuler(x, y, z) {
-  _e.set(x, y, z, 'XYZ');
-  return new THREE.Quaternion().setFromEuler(_e);
-}
-
-function quatAimDown(dir, twist = 0) {
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.clone().normalize());
-  if (twist) q.premultiply(new THREE.Quaternion().setFromAxisAngle(dir.clone().normalize(), twist));
-  return q;
-}
-
-// Local -Y aligns with `dir`. Local +Z stays as close as possible to `upHint`.
-function quatAimDownWithUp(dir, upHint) {
-  const y = dir.clone().normalize().negate();
-  const z = upHint.clone();
-  z.addScaledVector(y, -z.dot(y));
-  if (z.lengthSq() < 1e-8) z.crossVectors(y, new THREE.Vector3(1, 0, 0));
-  if (z.lengthSq() < 1e-8) z.set(0, 0, 1);
-  z.normalize();
-  const x = new THREE.Vector3().crossVectors(y, z).normalize();
-  z.crossVectors(x, y).normalize();
-  const basis = new THREE.Matrix4().makeBasis(x, y, z);
-  return new THREE.Quaternion().setFromRotationMatrix(basis);
-}
-
-function solveTwoBone(origin, target, lenA, lenB, bendHint) {
-  const to = target.clone().sub(origin);
-  const reach = to.length();
-  const max = lenA + lenB - 1e-4;
-  const min = Math.abs(lenA - lenB) + 1e-4;
-  const dist = THREE.MathUtils.clamp(reach, min, max);
-  const handN = to.multiplyScalar(1 / Math.max(reach, 1e-6));
-  const cosA = THREE.MathUtils.clamp((lenA * lenA + dist * dist - lenB * lenB) / (2 * lenA * dist), -1, 1);
-  const along = cosA * lenA;
-  const height = Math.sqrt(Math.max(0, lenA * lenA - along * along));
-  const perp = bendHint.clone().addScaledVector(handN, -bendHint.dot(handN));
-  if (perp.lengthSq() < 1e-8) perp.set(0, 0, 1);
-  perp.normalize();
-  const dirA = handN.clone().multiplyScalar(along).addScaledVector(perp, height).normalize();
-  const joint = origin.clone().addScaledVector(dirA, lenA);
-  const dirB = target.clone().sub(joint);
-  if (dirB.lengthSq() < 1e-8) dirB.copy(dirA);
-  dirB.normalize();
-  return { dirA, dirB };
-}
 
 function cubicInto(out, p0, p1, p2, p3, t) {
   const u = 1 - t;
@@ -114,51 +88,6 @@ function basisQuat(out, dir, normal) {
   _z.crossVectors(_x, _y).normalize();
   _m.makeBasis(_x, _y, _z);
   return out.setFromRotationMatrix(_m);
-}
-
-function ensureOutward(geo) {
-  geo.computeVertexNormals();
-  const pos = geo.attributes.position;
-  const nor = geo.attributes.normal;
-  let dot = 0;
-  const step = Math.max(1, Math.floor(pos.count / 48));
-  for (let i = 0; i < pos.count; i += step) {
-    dot += pos.getX(i) * nor.getX(i) + pos.getZ(i) * nor.getZ(i);
-  }
-  if (dot < 0) {
-    const idx = geo.index;
-    for (let i = 0; i < idx.count; i += 3) {
-      const a = idx.getX(i);
-      idx.setX(i, idx.getX(i + 1));
-      idx.setX(i + 1, a);
-    }
-    geo.computeVertexNormals();
-  }
-  return geo;
-}
-
-function lathe(profile, segments, displace) {
-  const pts = profile.map(([y, r]) => new THREE.Vector2(Math.max(r, 0.001), y));
-  const geo = new THREE.LatheGeometry(pts, segments);
-  if (displace) {
-    const pos = geo.attributes.position;
-    const vertex = new THREE.Vector3();
-    for (let i = 0; i < pos.count; i++) {
-      vertex.fromBufferAttribute(pos, i);
-      displace(vertex);
-      pos.setXYZ(i, vertex.x, vertex.y, vertex.z);
-    }
-  }
-  return ensureOutward(geo);
-}
-
-function radialDisplace(vertex, radiusFn) {
-  const theta = Math.atan2(vertex.x, vertex.z);
-  const r = Math.hypot(vertex.x, vertex.z);
-  const next = Math.max(0.004, radiusFn(theta, vertex.y, r));
-  const scale = r > 1e-5 ? next / r : 1;
-  vertex.x *= scale;
-  vertex.z *= scale;
 }
 
 /**
@@ -223,248 +152,32 @@ function createFeatherGeometry() {
   return geo;
 }
 
-function bodyDisplace(vertex) {
-  radialDisplace(vertex, (theta, y) => {
-    const profile = [
-      [-0.22, 0.048],
-      [-0.14, 0.078],
-      [-0.06, 0.1],
-      [0.02, 0.116],
-      [0.1, 0.12],
-      [0.16, 0.092],
-      [0.22, 0.074],
-      [0.3, 0.086],
-      [0.38, 0.1],
-      [0.46, 0.108],
-      [0.54, 0.1],
-      [0.62, 0.086],
-      [0.7, 0.058],
-      [0.78, 0.042],
-    ];
-    let r = profile[0][1];
-    for (let i = 0; i < profile.length - 1; i++) {
-      const [y0, r0] = profile[i];
-      const [y1, r1] = profile[i + 1];
-      if (y >= y0 && y <= y1) {
-        const f = (y - y0) / (y1 - y0);
-        r = r0 + (r1 - r0) * f;
-        break;
-      }
-      if (y > y1) r = r1;
-    }
-
-    const front = Math.max(0, Math.cos(theta));
-    const rear = Math.max(0, -Math.cos(theta));
-    const side = Math.abs(Math.sin(theta));
-
-    for (const s of [1, -1]) {
-      const dy = (y - 0.5) / 0.1;
-      const dt = (theta - s * 0.48) / 0.36;
-      const d2 = dy * dy + dt * dt;
-      if (d2 < 1) {
-        const k = Math.cos(Math.sqrt(d2) * Math.PI * 0.5);
-        r += 0.05 * k * k;
-      }
-    }
-
-    const shoulder = Math.exp(-((y - 0.64) ** 2) / (2 * 0.05 * 0.05));
-    r += 0.058 * shoulder * Math.pow(side, 0.55);
-    const glute = Math.exp(-((y - 0.0) ** 2) / (2 * 0.065 * 0.065));
-    r += 0.04 * glute * rear * (0.5 + 0.5 * side);
-    const hip = Math.exp(-((y - 0.06) ** 2) / (2 * 0.055 * 0.055));
-    r += 0.018 * hip * side;
-    const scapula = Math.exp(-((y - 0.58) ** 2) / (2 * 0.045 * 0.045));
-    r += 0.014 * scapula * rear;
-    const clav = Math.exp(-((y - 0.69) ** 2) / (2 * 0.018 * 0.018));
-    const clavSide = Math.exp(-((Math.abs(theta) - 0.65) ** 2) / (2 * 0.22 * 0.22));
-    r += 0.01 * clav * clavSide * front;
-    const navel = Math.exp(-((y - 0.3) ** 2) / (2 * 0.012 * 0.012) - (theta * theta) / (2 * 0.045 * 0.045));
-    r -= 0.011 * navel;
-    const sternum = Math.exp(-((y - 0.52) ** 2) / (2 * 0.055 * 0.055) - (theta * theta) / (2 * 0.05 * 0.05));
-    r -= 0.012 * sternum;
-
-    return r;
-  });
-
-  const y = vertex.y;
-  vertex.z += 0.02 * Math.exp(-((y - 0.5) ** 2) / (2 * 0.11 * 0.11));
-  vertex.z -= 0.014 * Math.exp(-((y - 0.2) ** 2) / (2 * 0.07 * 0.07));
-  vertex.z -= 0.01 * Math.exp(-((y - 0.0) ** 2) / (2 * 0.06 * 0.06));
-}
-
-function limbGeometry(profile, length, kind) {
-  const shaped = profile.map(([t, r]) => [t * length, r]);
-  const geo = lathe(shaped, kind === 'thigh' ? 28 : 22, (vertex) => {
-    const t = THREE.MathUtils.clamp(vertex.y / length, 0, 1);
-    radialDisplace(vertex, (th, _y, r) => {
-      let R = r;
-      if (kind === 'thigh') {
-        const inner = Math.max(0, -Math.cos(th));
-        R -= 0.008 * inner * Math.sin(Math.PI * t);
-        const quad = Math.exp(-((t - 0.35) ** 2) / 0.04) * Math.max(0, Math.cos(th));
-        R += 0.008 * quad;
-      } else if (kind === 'shin') {
-        const calf = Math.exp(-((t - 0.28) ** 2) / 0.02) * Math.max(0, -Math.cos(th));
-        R += 0.01 * calf;
-      } else if (kind === 'upper') {
-        const biceps = Math.exp(-((t - 0.4) ** 2) / 0.03) * Math.max(0, Math.cos(th));
-        R += 0.006 * biceps;
-      }
-      return R;
-    });
-  });
-  geo.rotateX(Math.PI);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function footGeometry() {
-  const geo = lathe(
-    [
-      [0, 0.022],
-      [0.035, 0.028],
-      [0.08, 0.02],
-      [0.13, 0.012],
-      [0.175, 0.0035],
-    ],
-    16,
-    (vertex) => {
-      radialDisplace(vertex, (_th, y, r) => r * (1 + 0.15 * Math.exp(-((y - 0.05) ** 2) / 0.002)));
-      vertex.z += 0.01 * smoothstep(0.02, 0.12, vertex.y);
-    },
-  );
-  geo.rotateX(Math.PI);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function sculptHead(geo) {
-  const pos = geo.attributes.position;
-  const vertex = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    vertex.fromBufferAttribute(pos, i);
-    vertex.x *= 0.9;
-    vertex.y *= 1.08;
-    vertex.z *= 0.96;
-    const lower = smoothstep(0.02, -0.55, vertex.y);
-    vertex.x *= 1 - 0.18 * lower;
-    vertex.z *= 1 - 0.06 * lower;
-    if (vertex.y < -0.15 && vertex.z > 0) {
-      const chin = smoothstep(-0.15, -0.62, vertex.y) * smoothstep(0.0, 0.35, vertex.z);
-      const narrow = Math.exp(-(vertex.x * vertex.x) / 0.02);
-      vertex.y -= 0.045 * chin * narrow;
-      vertex.z += 0.02 * chin * narrow;
-    }
-    const nose = Math.exp(-(vertex.x * vertex.x) / 0.008 - ((vertex.y - 0.01) ** 2) / 0.012);
-    if (vertex.z > 0) vertex.z += 0.055 * nose;
-    pos.setXYZ(i, vertex.x, vertex.y, vertex.z);
-  }
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function stampUv(mesh) {
-  mesh.updateWorldMatrix(true, false);
-  const pos = mesh.geometry.attributes.position;
-  const uv = new Float32Array(pos.count * 2);
-  const vertex = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    vertex.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-    uv[i * 2] = Math.atan2(vertex.x, vertex.z) / (Math.PI * 2) + 0.5;
-    uv[i * 2 + 1] = vertex.y * 0.36 + 0.12;
-  }
-  mesh.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-}
-
-function attach(parent, geo, material, position, name) {
-  let geometry = geo;
-  if (geo.userData.template) {
-    geometry = geo.clone();
-    geometry.userData = { ...geo.userData, template: false };
-  }
-  const mesh = new THREE.Mesh(geometry, material);
-  if (position) mesh.position.set(position[0], position[1], position[2]);
-  mesh.name = name;
-  mesh.castShadow = false;
-  parent.add(mesh);
-  return mesh;
-}
-
-function bone(parent, name, position) {
-  const g = new THREE.Group();
-  g.name = name;
-  if (position) g.position.set(position[0], position[1], position[2]);
-  parent.add(g);
-  return g;
-}
-
-function poseOf(position, euler) {
-  return {
-    p: v3(position[0], position[1], position[2]),
-    q: euler instanceof THREE.Quaternion ? euler.clone() : quatEuler(euler[0], euler[1], euler[2]),
-  };
-}
-
-const THIGH = 0.45;
-const SHIN = 0.44;
-const UPPER = 0.38;
-const FORE = 0.34;
-
-const THIGH_GEO = limbGeometry(
-  [
-    [0, 0.078],
-    [0.12, 0.08],
-    [0.4, 0.06],
-    [0.75, 0.05],
-    [1, 0.042],
-  ],
-  THIGH,
-  'thigh',
-);
-const SHIN_GEO = limbGeometry(
-  [
-    [0, 0.042],
-    [0.18, 0.05],
-    [0.4, 0.038],
-    [0.78, 0.026],
-    [1, 0.02],
-  ],
-  SHIN,
-  'shin',
-);
-const UPPER_GEO = limbGeometry(
-  [
-    [0, 0.046],
-    [0.2, 0.044],
-    [0.6, 0.036],
-    [1, 0.03],
-  ],
-  UPPER,
-  'upper',
-);
-const FORE_GEO = limbGeometry(
-  [
-    [0, 0.03],
-    [0.25, 0.028],
-    [0.7, 0.022],
-    [1, 0.017],
-  ],
-  FORE,
-  'fore',
-);
-const FOOT_GEO = footGeometry();
-
-for (const geo of [THIGH_GEO, SHIN_GEO, UPPER_GEO, FORE_GEO, FOOT_GEO]) {
-  geo.userData.template = true;
-}
-
-// Phones and narrow windows get fewer feather instances. A wide desktop,
-// including a portrait preview, keeps the full wing.
 function preferLight() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   const narrow = window.matchMedia('(max-width: 760px), (max-height: 520px)').matches;
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   return narrow || (coarse && window.matchMedia('(max-width: 1100px)').matches);
+}
+
+function useMobileModel() {
+  if (typeof window === 'undefined') return false;
+  const w = window.innerWidth || 1280;
+  const h = window.innerHeight || 800;
+  const dpr = window.devicePixelRatio || 1;
+  const narrow = Math.min(w, h) < 760 || w < 820;
+  const touch =
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+    (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+  if (narrow) return true;
+  if (touch && w < 1180) return true;
+  if (dpr >= 2.4 && w < 1100) return true;
+  return false;
+}
+
+function modelUrl() {
+  const base = import.meta.env.BASE_URL || '/';
+  const name = useMobileModel() ? 'virgo-50k-mobile.glb' : 'virgo-100k.glb';
+  return `${base}models/${name}`;
 }
 
 function featherEnvelope(kind, t, rowF, layerF) {
@@ -507,7 +220,7 @@ function makeWingSpecs(light) {
       flutter: 0.055,
       open: {
         points: [v3(0, 0, 0), v3(0.22 * s, 0.3, -0.05), v3(0.06 * s, 1.05, -0.01), v3(-0.11 * s, 1.6, 0.03)],
-        hints: [v3(0.15 * s, 0.95, 0.06), v3(0.55 * s, 0.72, 0.1), v3(0.02 * s, 0.99, 0.02)],
+        hints: [v3(0.15 * s, 0.95, -0.08), v3(0.55 * s, 0.72, -0.1), v3(0.02 * s, 0.99, -0.06)],
         fan0: 0.14,
         fan1: 0.28,
         out: 0.8,
@@ -515,13 +228,13 @@ function makeWingSpecs(light) {
         width: 1.02,
       },
       closed: {
-        points: [v3(0, 0, 0), v3(0.05 * s, -0.28, -0.06), v3(0.03 * s, -0.58, -0.04), v3(0.01 * s, -0.92, -0.02)],
-        hints: [v3(0.08 * s, -0.98, -0.04), v3(0.05 * s, -1, -0.02), v3(0.02 * s, -1, 0)],
-        fan0: 0.05,
-        fan1: 0.08,
-        out: 0.22,
-        lenMul: 0.48,
-        width: 0.72,
+        points: [v3(0, 0, 0), v3(0.16 * s, 0.28, -0.1), v3(0.05 * s, 0.72, -0.14), v3(-0.06 * s, 1.05, -0.08)],
+        hints: [v3(0.25 * s, 0.92, -0.12), v3(0.08 * s, 0.98, -0.1), v3(-0.05 * s, 0.99, -0.06)],
+        fan0: 0.16,
+        fan1: 0.22,
+        out: 0.55,
+        lenMul: 0.78,
+        width: 0.85,
       },
     });
     specs.push({
@@ -535,7 +248,7 @@ function makeWingSpecs(light) {
       flutter: 0.07,
       open: {
         points: [v3(0, 0, 0), v3(0.28 * s, 0.1, -0.05), v3(0.55 * s, 0.22, -0.02), v3(0.78 * s, 0.34, 0.02)],
-        hints: [v3(0.02 * s, -0.99, 0.08), v3(0.22 * s, -0.92, 0.05), v3(0.72 * s, -0.48, 0.03)],
+        hints: [v3(0.02 * s, -0.99, -0.1), v3(0.22 * s, -0.92, -0.08), v3(0.72 * s, -0.48, -0.06)],
         fan0: 0.18,
         fan1: 0.62,
         out: 0.86,
@@ -543,13 +256,13 @@ function makeWingSpecs(light) {
         width: 0.88,
       },
       closed: {
-        points: [v3(0, 0, 0), v3(0.08 * s, -0.32, -0.08), v3(0.05 * s, -0.68, -0.05), v3(0.02 * s, -1.05, -0.02)],
-        hints: [v3(0.1 * s, -0.96, -0.05), v3(0.06 * s, -1, -0.03), v3(0.02 * s, -1, 0)],
-        fan0: 0.06,
-        fan1: 0.1,
-        out: 0.24,
-        lenMul: 0.5,
-        width: 0.7,
+        points: [v3(0, 0, 0), v3(0.22 * s, -0.02, -0.12), v3(0.32 * s, -0.28, -0.1), v3(0.18 * s, -0.55, -0.06)],
+        hints: [v3(0.35 * s, -0.9, -0.14), v3(0.45 * s, -0.82, -0.1), v3(0.2 * s, -0.95, -0.06)],
+        fan0: 0.2,
+        fan1: 0.28,
+        out: 0.5,
+        lenMul: 0.7,
+        width: 0.8,
       },
     });
     specs.push({
@@ -572,15 +285,24 @@ function makeWingSpecs(light) {
         width: 1.05,
       },
       closed: {
-        points: [v3(0, 0, 0), v3(0.05 * s, -0.22, -0.05), v3(0.03 * s, -0.42, -0.03), v3(0.01 * s, -0.62, -0.01)],
-        hints: [v3(0.12 * s, -0.97, -0.04), v3(0.06 * s, -1, -0.02), v3(0, -1, 0)],
-        fan0: 0.1,
-        fan1: 0.06,
-        out: 0.2,
-        lenMul: 0.55,
-        width: 0.75,
+        points: [v3(0, 0, 0), v3(0.12 * s, -0.4, -0.1), v3(0.1 * s, -0.95, -0.08), v3(0.02 * s, -1.45, -0.04)],
+        hints: [v3(0.28 * s, -0.92, -0.1), v3(0.18 * s, -0.96, -0.06), v3(0.04 * s, -1, -0.02)],
+        fan0: 0.28,
+        fan1: 0.12,
+        out: 0.48,
+        lenMul: 0.85,
+        width: 0.9,
       },
     });
+  }
+  for (const spec of specs) {
+    for (const pose of [spec.open, spec.closed]) {
+      for (const p of pose.points) {
+        p.multiplyScalar(WING_REACH);
+        // Keep the vane behind the gown. Group +Z faces the camera.
+        p.z -= 0.1;
+      }
+    }
   }
   return specs;
 }
@@ -610,366 +332,6 @@ function buildRecipes(specs, rand) {
   return recipes;
 }
 
-function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return false;
-  }
-  let span = 0;
-  for (let i = 1; i < points.length; i++) span += points[i].distanceTo(points[i - 1]);
-  if (span < 1e-4) return false;
-
-  if (!curve) curve = new THREE.CatmullRomCurve3(points);
-  else {
-    for (let i = 0; i < points.length; i++) curve.points[i].copy(points[i]);
-    curve.needsUpdate = true;
-  }
-
-  const steps = geo.userData.steps;
-  const pos = geo.attributes.position;
-  const up = upHint || _up;
-  let k = vertexOffset;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const p = curve.getPointAt(t);
-    const tang = curve.getTangentAt(t);
-    _x.crossVectors(tang, up);
-    if (_x.lengthSq() < 1e-6) _x.crossVectors(tang, _fwd);
-    _x.normalize();
-    const w = width * Math.pow(1 - t, 0.62);
-    pos.setXYZ(k++, p.x + _x.x * w, p.y + _x.y * w, p.z + _x.z * w);
-    pos.setXYZ(k++, p.x - _x.x * w, p.y - _x.y * w, p.z - _x.z * w);
-  }
-  pos.needsUpdate = true;
-  return true;
-}
-
-function createHair(material) {
-  const steps = 14;
-  const stride = (steps + 1) * 2;
-  const positions = new Float32Array(HAIR.length * stride * 3);
-  const uvs = new Float32Array(HAIR.length * stride * 2);
-  const indices = [];
-  const strands = HAIR.map((spec, index) => {
-    const base = spec.pts.map((p) => v3(p[0], p[1], p[2]));
-    const vertex = index * stride;
-    for (let i = 0; i <= steps; i++) {
-      const o = (vertex + i * 2) * 2;
-      uvs[o] = 0;
-      uvs[o + 1] = i / steps;
-      uvs[o + 2] = 1;
-      uvs[o + 3] = i / steps;
-      if (i < steps) {
-        const a = vertex + i * 2;
-        indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-      }
-    }
-    return {
-      base,
-      width: spec.w,
-      up: v3(spec.up[0], spec.up[1], spec.up[2]),
-      vertex,
-      scratch: base.map(() => new THREE.Vector3()),
-      curve: new THREE.CatmullRomCurve3(base.map((p) => p.clone())),
-    };
-  });
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  geo.setIndex(indices);
-  geo.userData.steps = steps;
-  for (const strand of strands) {
-    writeRibbon(geo, strand.base, strand.width, strand.up, strand.vertex, strand.curve);
-  }
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.name = 'hairMesh';
-  mesh.frustumCulled = false;
-  return { mesh, strands };
-}
-
-const HAIR = [
-  { w: 0.055, up: [0, 0, 1], pts: [[0.0, 0.12, 0.06], [-0.06, 0.04, 0.12], [-0.16, -0.12, 0.08], [-0.26, -0.32, 0.0]] },
-  { w: 0.042, up: [0, 0, 1], pts: [[0.03, 0.13, 0.05], [-0.04, 0.02, 0.13], [-0.14, -0.16, 0.1], [-0.22, -0.38, 0.02]] },
-  { w: 0.036, up: [0, 1, 0], pts: [[-0.02, 0.14, 0.02], [-0.1, 0.06, 0.06], [-0.22, -0.1, 0.02], [-0.34, -0.28, -0.04]] },
-  { w: 0.05, up: [0, 1, 0], pts: [[0.02, 0.15, -0.02], [-0.08, 0.1, -0.06], [-0.2, -0.05, -0.1], [-0.3, -0.28, -0.08]] },
-  { w: 0.046, up: [1, 0, 0], pts: [[0.0, 0.13, -0.06], [-0.04, 0.02, -0.12], [-0.08, -0.18, -0.14], [-0.06, -0.42, -0.12]] },
-  { w: 0.034, up: [1, 0, 0], pts: [[0.06, 0.12, -0.04], [0.1, 0.02, -0.08], [0.08, -0.16, -0.1], [0.04, -0.32, -0.08]] },
-  { w: 0.03, up: [0, 1, 0], pts: [[-0.05, 0.14, 0.0], [-0.12, 0.2, 0.04], [-0.18, 0.14, 0.08], [-0.22, 0.02, 0.06]] },
-  { w: 0.028, up: [0, 0, 1], pts: [[0.04, 0.15, 0.0], [0.02, 0.22, 0.04], [-0.06, 0.2, 0.08], [-0.12, 0.1, 0.06]] },
-  { w: 0.04, up: [0, 0, 1], pts: [[0.05, 0.1, 0.08], [-0.02, -0.02, 0.12], [-0.1, -0.2, 0.06], [-0.16, -0.4, -0.02]] },
-  { w: 0.026, up: [0, 1, 0], pts: [[-0.04, 0.11, 0.09], [-0.12, -0.02, 0.1], [-0.2, -0.2, 0.04], [-0.28, -0.36, -0.02]] },
-  { w: 0.033, up: [0, 1, 0], pts: [[0.0, 0.145, -0.01], [-0.14, 0.08, -0.02], [-0.26, -0.08, 0.02], [-0.36, -0.22, 0.06]] },
-  { w: 0.024, up: [0, 0, 1], pts: [[0.08, 0.11, 0.04], [0.12, 0.0, 0.02], [0.1, -0.14, -0.02], [0.06, -0.26, -0.04]] },
-  { w: 0.038, up: [1, 0, 0], pts: [[-0.02, 0.1, -0.08], [-0.1, -0.02, -0.1], [-0.16, -0.22, -0.06], [-0.18, -0.4, 0.0]] },
-  { w: 0.02, up: [0, 1, 0], pts: [[0.01, 0.16, 0.04], [-0.05, 0.22, 0.1], [-0.12, 0.16, 0.14], [-0.16, 0.06, 0.1]] },
-];
-
-function createFigure(material, hairMat, jointMat) {
-  const hips = new THREE.Group();
-  hips.name = 'hips';
-
-  const realBody = lathe(
-    [
-      [-0.22, 0.048],
-      [-0.14, 0.078],
-      [-0.06, 0.1],
-      [0.02, 0.116],
-      [0.1, 0.12],
-      [0.16, 0.092],
-      [0.22, 0.074],
-      [0.3, 0.086],
-      [0.38, 0.1],
-      [0.46, 0.108],
-      [0.54, 0.1],
-      [0.62, 0.086],
-      [0.7, 0.058],
-      [0.78, 0.042],
-    ],
-    72,
-    bodyDisplace,
-  );
-  const bodyMesh = attach(hips, realBody, material, null, 'body');
-
-  const neck = bone(hips, 'neck', [0, 0.74, 0.012]);
-  const neckGeo = lathe(
-    [
-      [0, 0.04],
-      [0.045, 0.036],
-      [0.1, 0.038],
-      [0.14, 0.044],
-    ],
-    28,
-  );
-  const neckMesh = attach(neck, neckGeo, jointMat, null, 'neck');
-
-  const head = bone(neck, 'head', [0, 0.145, 0.01]);
-  const headGeo = sculptHead(new THREE.SphereGeometry(0.145, 40, 28));
-  const headMesh = attach(head, headGeo, material, null, 'head');
-
-  const scalpGeo = new THREE.SphereGeometry(0.15, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.62);
-  scalpGeo.scale(0.96, 0.82, 1.02);
-  scalpGeo.translate(0, 0.045, -0.03);
-  scalpGeo.computeVertexNormals();
-  const scalp = attach(head, scalpGeo, hairMat, null, 'scalp');
-
-  const hair = new THREE.Group();
-  hair.name = 'hair';
-  head.add(hair);
-  const builtHair = createHair(hairMat);
-  hair.add(builtHair.mesh);
-  const strands = builtHair.strands;
-
-  const shoulderGeo = new THREE.SphereGeometry(0.052, 18, 14);
-  const elbowGeo = new THREE.SphereGeometry(0.032, 14, 12);
-  const kneeGeo = new THREE.SphereGeometry(0.046, 16, 12);
-  const ankleGeo = new THREE.SphereGeometry(0.024, 12, 10);
-  const palmGeo = new THREE.SphereGeometry(0.034, 16, 12);
-  palmGeo.scale(1.05, 1.25, 0.48);
-  for (const geo of [shoulderGeo, elbowGeo, kneeGeo, ankleGeo, palmGeo]) {
-    geo.userData.template = true;
-  }
-
-  const fingers = [];
-  const arms = {};
-
-  for (const side of [1, -1]) {
-    const tag = side > 0 ? 'L' : 'R';
-    const upper = bone(hips, `upper${tag}`, [0.2 * side, 0.63, 0.03]);
-    attach(upper, UPPER_GEO, material, null, `upper${tag}`);
-    attach(upper, shoulderGeo, jointMat, [0, 0.01, 0], `shoulder${tag}`);
-    const fore = bone(upper, `fore${tag}`, [0, -UPPER, 0]);
-    attach(fore, FORE_GEO, material, null, `fore${tag}`);
-    attach(fore, elbowGeo, jointMat, [0, 0.01, 0], `elbow${tag}`);
-    const hand = bone(fore, `hand${tag}`, [0, -FORE, 0]);
-    const palm = attach(hand, palmGeo, material, [0, -0.04, 0], `palm${tag}`);
-    palm.scale.set(side > 0 ? 1 : 1, 1, 1);
-
-    const fingerSpecs = [
-      { x: -0.02, z: 0.008, len: 0.078, r: 0.0082, curlR: 0.42, curlS: 0.12 },
-      { x: -0.006, z: 0.011, len: 0.09, r: 0.0086, curlR: 0.36, curlS: 0.1 },
-      { x: 0.009, z: 0.009, len: 0.082, r: 0.008, curlR: 0.4, curlS: 0.12 },
-      { x: 0.022, z: 0.005, len: 0.066, r: 0.007, curlR: 0.5, curlS: 0.16 },
-    ];
-    for (const spec of fingerSpecs) {
-      const finger = bone(hand, `finger${tag}`, [spec.x * side, -0.075, spec.z]);
-      const capLen = Math.max(0.012, spec.len - spec.r * 2);
-      const cap = new THREE.CapsuleGeometry(spec.r, capLen, 3, 6);
-      const mesh = attach(finger, cap, material, [0, -spec.len * 0.5, 0], `fingerMesh${tag}`);
-      mesh.rotation.order = 'XYZ';
-      finger.rotation.order = 'XYZ';
-      fingers.push({ bone: finger, curlR: spec.curlR, curlS: spec.curlS });
-    }
-    const thumb = bone(hand, `thumb${tag}`, [-0.03 * side, -0.028, 0.012]);
-    thumb.rotation.order = 'XYZ';
-    const thumbGeo = new THREE.CapsuleGeometry(0.009, 0.04, 3, 6);
-    attach(thumb, thumbGeo, material, [0, -0.03, 0], `thumbMesh${tag}`);
-    fingers.push({
-      bone: thumb,
-      curlR: 0.55,
-      curlS: 0.25,
-      z: 0.55 * side,
-      stillZ: 0.35 * side,
-    });
-
-    arms[tag] = { upper, fore, hand };
-  }
-
-  const legs = {};
-  for (const side of [1, -1]) {
-    const tag = side > 0 ? 'L' : 'R';
-    const thigh = bone(hips, `thigh${tag}`, [0.055 * side, -0.02, 0.012]);
-    attach(thigh, THIGH_GEO, material, null, `thigh${tag}`);
-    const shin = bone(thigh, `shin${tag}`, [0, -THIGH, 0]);
-    attach(shin, SHIN_GEO, material, null, `shin${tag}`);
-    attach(shin, kneeGeo, jointMat, [0, 0.012, 0.006], `knee${tag}`);
-    const foot = bone(shin, `foot${tag}`, [0, -SHIN, 0]);
-    attach(foot, FOOT_GEO, material, null, `foot${tag}`);
-    attach(foot, ankleGeo, jointMat, [0, 0.008, 0], `ankle${tag}`);
-    legs[tag] = { thigh, shin, foot };
-  }
-
-  const wingUL = bone(hips, 'wingUL', [0.12, 0.58, -0.13]);
-  const wingUR = bone(hips, 'wingUR', [-0.12, 0.58, -0.13]);
-  const wingML = bone(hips, 'wingML', [0.16, 0.46, -0.11]);
-  const wingMR = bone(hips, 'wingMR', [-0.16, 0.46, -0.11]);
-  const wingLL = bone(hips, 'wingLL', [0.07, 0.04, -0.1]);
-  const wingLR = bone(hips, 'wingLR', [-0.07, 0.04, -0.1]);
-
-  const nodes = {
-    hips,
-    neck,
-    head,
-    upperL: arms.L.upper,
-    foreL: arms.L.fore,
-    handL: arms.L.hand,
-    upperR: arms.R.upper,
-    foreR: arms.R.fore,
-    handR: arms.R.hand,
-    thighL: legs.L.thigh,
-    shinL: legs.L.shin,
-    footL: legs.L.foot,
-    thighR: legs.R.thigh,
-    shinR: legs.R.shin,
-    footR: legs.R.foot,
-    wingUL,
-    wingUR,
-    wingML,
-    wingMR,
-    wingLL,
-    wingLR,
-  };
-
-  return { hips, nodes, bodyMesh, neckMesh, headMesh, scalp, hair, strands, fingers };
-}
-
-function stillLimbPoses() {
-  const up = v3(0, 1, 0);
-  const pose = {};
-
-  const legs = [
-    { tag: 'L', side: 1, knee: v3(0.86, -0.06, 0.42), foot: v3(0.02, 0.02, 0.22), toes: v3(-0.15, 0.25, 0.7) },
-    { tag: 'R', side: -1, knee: v3(-0.86, -0.08, 0.38), foot: v3(-0.04, -0.06, 0.16), toes: v3(0.15, 0.2, 0.72) },
-  ];
-  for (const leg of legs) {
-    const thighPos = v3(0.06 * leg.side, -0.02, 0.02);
-    const kneeDir = leg.knee.clone().normalize();
-    const knee = thighPos.clone().addScaledVector(kneeDir, THIGH);
-    const shinDir = leg.foot.clone().sub(knee).normalize();
-    const thighQ = quatAimDown(kneeDir);
-    const shinQ = quatAimDown(shinDir.clone().applyQuaternion(thighQ.clone().invert()));
-    const shinWorld = thighQ.clone().multiply(shinQ);
-    const footDir = leg.toes.clone().normalize();
-    const footQ = quatAimDownWithUp(
-      footDir.clone().applyQuaternion(shinWorld.clone().invert()),
-      up.clone().applyQuaternion(shinWorld.clone().invert()),
-    );
-    pose[`thigh${leg.tag}`] = poseOf(thighPos.toArray(), thighQ);
-    pose[`shin${leg.tag}`] = poseOf([0, -THIGH, 0], shinQ);
-    pose[`foot${leg.tag}`] = poseOf([0, -SHIN, 0], footQ);
-  }
-
-  const arms = [
-    { tag: 'L', side: 1, hand: v3(0.4, 0.04, 0.28), hint: v3(0.7, -0.1, -0.45) },
-    { tag: 'R', side: -1, hand: v3(-0.4, 0.02, 0.28), hint: v3(-0.7, -0.1, -0.45) },
-  ];
-  for (const arm of arms) {
-    const shoulder = v3(0.19 * arm.side, 0.63, 0.03);
-    const ik = solveTwoBone(shoulder, arm.hand, UPPER, FORE, arm.hint);
-    const upperQ = quatAimDown(ik.dirA);
-    const foreQ = quatAimDown(ik.dirB.clone().applyQuaternion(upperQ.clone().invert()));
-    const armWorld = upperQ.clone().multiply(foreQ);
-    const fingerDir = v3(arm.side * 0.55, -0.2, 0.35).normalize();
-    const handQ = quatAimDownWithUp(
-      fingerDir.applyQuaternion(armWorld.clone().invert()),
-      up.clone().applyQuaternion(armWorld.clone().invert()),
-    );
-    pose[`upper${arm.tag}`] = poseOf(shoulder.toArray(), upperQ);
-    pose[`fore${arm.tag}`] = poseOf([0, -UPPER, 0], foreQ);
-    pose[`hand${arm.tag}`] = poseOf([0, -FORE, 0], handQ);
-  }
-  return pose;
-}
-
-function assignPoses(nodes) {
-  const limbs = stillLimbPoses();
-
-  const radiant = {
-    hips: poseOf([0, 1.1, 0], [0.03, -0.08, 0.035]),
-    neck: poseOf([0, 0.74, 0.012], [-0.06, -0.18, 0.02]),
-    head: poseOf([0, 0.145, 0.01], [0.28, -0.62, 0.08]),
-    upperL: poseOf([0.19, 0.63, 0.03], [-0.14, 0.18, -0.38]),
-    foreL: poseOf([0, -UPPER, 0], [-0.22, 0.12, 0.28]),
-    handL: poseOf([0, -FORE, 0], [0.15, -0.7, 0.35]),
-    upperR: poseOf([-0.19, 0.63, 0.03], [-0.1, -0.12, 0.36]),
-    foreR: poseOf([0, -UPPER, 0], [-0.18, -0.08, -0.26]),
-    handR: poseOf([0, -FORE, 0], [0.12, 0.65, -0.32]),
-    thighL: poseOf([0.052, -0.02, 0.012], [-0.04, 0.04, -0.03]),
-    shinL: poseOf([0, -THIGH, 0], [0.06, 0, 0]),
-    footL: poseOf([0, -SHIN, 0], [-0.18, 0.04, 0]),
-    thighR: poseOf([-0.05, -0.02, 0.01], [0.02, -0.05, 0.035]),
-    shinR: poseOf([0, -THIGH, 0], [0.04, 0, 0]),
-    footR: poseOf([0, -SHIN, 0], [-0.12, -0.06, 0]),
-  };
-
-  const still = {
-    hips: poseOf([0, 0.4, 0], [0.02, 0, 0]),
-    neck: poseOf([0, 0.74, 0.012], [0.04, 0, 0]),
-    head: poseOf([0, 0.145, 0.01], [0.12, 0, 0]),
-    upperL: limbs.upperL,
-    foreL: limbs.foreL,
-    handL: limbs.handL,
-    upperR: limbs.upperR,
-    foreR: limbs.foreR,
-    handR: limbs.handR,
-    thighL: limbs.thighL,
-    shinL: limbs.shinL,
-    footL: limbs.footL,
-    thighR: limbs.thighR,
-    shinR: limbs.shinR,
-    footR: limbs.footR,
-  };
-
-  const posed = [
-    'hips', 'neck', 'head',
-    'upperL', 'foreL', 'handL', 'upperR', 'foreR', 'handR',
-    'thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR',
-  ];
-  for (const name of posed) {
-    nodes[name].userData.radiant = radiant[name];
-    nodes[name].userData.still = still[name];
-  }
-
-  const wings = ['wingUL', 'wingUR', 'wingML', 'wingMR', 'wingLL', 'wingLR'];
-  for (const name of wings) {
-    const node = nodes[name];
-    node.userData.rest = node.position.clone();
-    node.userData.radiant = poseOf(node.position.toArray(), [0, 0, 0]);
-    node.userData.still = poseOf(node.position.toArray(), [0, 0, 0]);
-  }
-  return posed.concat(wings);
-}
-
 function sampleHint(out, hints, t) {
   if (t < 0.5) return out.copy(hints[0]).lerp(hints[1], t / 0.5);
   return out.copy(hints[1]).lerp(hints[2], (t - 0.5) / 0.5);
@@ -980,54 +342,168 @@ function lerpPose(outP, outH, a, b, t) {
   for (let i = 0; i < 3; i++) outH[i].copy(a.hints[i]).lerp(b.hints[i], t);
 }
 
-/**
- * Seraph sculpt. `setForm('still', t)` settles into a seated meditation
- * with the wings folded in; `setForm('radiant', t)` opens the reference
- * pose. `t` is 0 at the other form and 1 at the named form. If setForm
- * is never called the figure stays radiant.
- */
+// Virgo's own wings are one asymmetric curtain welded into the gown.
+// The body sits near x = 0.17. Anything outside the gown, and outside the
+// forward reach of the arms, is that curtain.
+const BODY_X = 0.17;
+
+function gownRadius(y) {
+  if (y > 0.5) return 0.2;
+  if (y > 0.4) return 0.24;
+  if (y > 0.12) return 0.27;
+  if (y > -0.08) return 0.3;
+  if (y > -0.28) return 0.38;
+  const flare = Math.min(1, (-0.28 - y) / 0.5);
+  return 0.38 + flare * 0.16;
+}
+
+function isWing(x, y, z) {
+  const dx = x - BODY_X;
+  // Raised wing beside and above the head. The head itself stays left of x = 0.34.
+  if (y > 0.46 && x > 0.34) return true;
+  if (y > 0.58) return true;
+  const radius = gownRadius(y);
+  // The rear curtain and the forward-swept feathers sit outside the gown.
+  if (z > 0.06 && Math.abs(dx) > radius * 0.72) return true;
+  if (Math.abs(dx) <= radius && z < 0.12) return false;
+  // Hands, wheat, and staff: a short reach in front of the ribs, not the wing sheet.
+  if (y > 0 && y < 0.42 && z < -0.2 && Math.abs(dx) < radius + 0.16) return false;
+  return true;
+}
+
+function takeTriangles(src, keep) {
+  const pos = src.attributes.position;
+  const index = src.index;
+  if (!index) return null;
+  const kept = [];
+  for (let t = 0, n = index.count; t < n; t += 3) {
+    const a = index.getX(t);
+    const b = index.getX(t + 1);
+    const c = index.getX(t + 2);
+    const x = (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
+    const y = (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3;
+    const z = (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3;
+    if (keep(x, y, z)) kept.push(a, b, c);
+  }
+  if (kept.length === 0) return null;
+  const map = new Map();
+  const positions = [];
+  const out = [];
+  for (const vi of kept) {
+    let ni = map.get(vi);
+    if (ni === undefined) {
+      ni = positions.length / 3;
+      map.set(vi, ni);
+      positions.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+    }
+    out.push(ni);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(out);
+  // Decimation split the shell and left normals that point off the faces.
+  // Weld, ease the chatter, then shade from the smoothed surface.
+  const welded = mergeVertices(geo, 1e-4);
+  geo.dispose();
+  softenSurface(welded, 4);
+  welded.computeVertexNormals();
+  const count = welded.attributes.position.count;
+  const uvs = new Float32Array(count * 2);
+  const posAttr = welded.attributes.position;
+  for (let i = 0; i < count; i++) {
+    uvs[i * 2] = Math.atan2(posAttr.getX(i), posAttr.getZ(i)) / (Math.PI * 2) + 0.5;
+    uvs[i * 2 + 1] = posAttr.getY(i) * 0.4 + 0.5;
+  }
+  welded.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  // Full-span flag forces the marble shader onto the figure, not the GLB atlas.
+  welded.userData.marbleUvSpan = 1;
+  welded.computeBoundingBox();
+  welded.computeBoundingSphere();
+  return welded;
+}
+
+// Taubin steps take the high-frequency crumple out of the decimated shell
+// without shrinking the figure the way plain smoothing does.
+function softenSurface(geo, iterations) {
+  const pos = geo.attributes.position;
+  const index = geo.index.array;
+  const count = pos.count;
+  const neighbors = Array.from({ length: count }, () => []);
+  const seen = Array.from({ length: count }, () => new Set());
+  for (let i = 0; i < index.length; i += 3) {
+    const tri = [index[i], index[i + 1], index[i + 2]];
+    for (let a = 0; a < 3; a++) {
+      for (let b = 0; b < 3; b++) {
+        if (a === b || seen[tri[a]].has(tri[b])) continue;
+        seen[tri[a]].add(tri[b]);
+        neighbors[tri[a]].push(tri[b]);
+      }
+    }
+  }
+  const src = new Float32Array(pos.array);
+  const dst = new Float32Array(src.length);
+  const pass = (factor) => {
+    for (let i = 0; i < count; i++) {
+      const ring = neighbors[i];
+      let x = 0;
+      let y = 0;
+      let z = 0;
+      for (const j of ring) {
+        x += src[j * 3];
+        y += src[j * 3 + 1];
+        z += src[j * 3 + 2];
+      }
+      const n = ring.length || 1;
+      dst[i * 3] = src[i * 3] + factor * (x / n - src[i * 3]);
+      dst[i * 3 + 1] = src[i * 3 + 1] + factor * (y / n - src[i * 3 + 1]);
+      dst[i * 3 + 2] = src[i * 3 + 2] + factor * (z / n - src[i * 3 + 2]);
+    }
+    src.set(dst);
+  };
+  for (let k = 0; k < iterations; k++) {
+    pass(0.5);
+    pass(-0.53);
+  }
+  pos.array.set(src);
+  pos.needsUpdate = true;
+}
+
+function disposeMaterialTextures(material) {
+  if (!material) return;
+  for (const key of TEXTURE_KEYS) {
+    if (material[key]) material[key].dispose();
+  }
+  material.dispose();
+}
+
+function releaseGltf(root) {
+  if (!root) return;
+  root.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    const mats = obj.material == null ? [] : Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const material of mats) disposeMaterialTextures(material);
+  });
+}
+
 export function createAngel(marble) {
   const group = new THREE.Group();
   group.name = 'angel';
 
-  const hairMat = marble.body.clone();
-  hairMat.side = THREE.DoubleSide;
-  hairMat.polygonOffset = true;
-  hairMat.polygonOffsetFactor = -1;
-  hairMat.polygonOffsetUnits = -2;
+  const surface = marble.body.clone();
+  surface.side = THREE.DoubleSide;
+  surface.name = 'VirgoMarble';
+  // The marble normal map is a fine grain. On this shell it reads as static,
+  // so the body keeps the triplanar color and a soft vein relief only.
+  surface.normalMap = null;
+  surface.normalScale.set(0, 0);
 
-  const jointMat = marble.body.clone();
-  jointMat.polygonOffset = true;
-  jointMat.polygonOffsetFactor = -1;
-  jointMat.polygonOffsetUnits = -4;
-
-  const figure = createFigure(marble.body, hairMat, jointMat);
-  group.add(figure.hips);
-
-  const light = preferLight();
-  const specs = makeWingSpecs(light);
-  const rand = mulberry32(0xa11e);
-  const recipes = buildRecipes(specs, rand);
-  const featherGeo = createFeatherGeometry();
-  const wings = specs.map((spec, index) => {
-    const count = recipes[index].length;
-    const mesh = new THREE.InstancedMesh(featherGeo, marble.wing, count);
-    mesh.name = spec.name;
-    mesh.frustumCulled = false;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    const color = new THREE.Color();
-    for (let i = 0; i < count; i++) {
-      const lift = 0.9 + (1 - recipes[index][i].layerF) * 0.1;
-      color.setRGB(lift, lift, Math.min(1, lift + 0.01));
-      mesh.setColorAt(i, color);
-    }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    group.add(mesh);
-    return { spec, mesh, recipes: recipes[index] };
-  });
-
-  const posedNames = assignPoses(figure.nodes);
+  let disposed = false;
+  let ready = false;
   let formBlend = 0;
+  let gltfRoot = null;
+  const ownedGeometries = [];
+  const nodes = {};
+  let wingList = [];
 
   const scratchP = [v3(), v3(), v3(), v3()];
   const scratchH = [v3(), v3(), v3()];
@@ -1039,85 +515,152 @@ export function createAngel(marble) {
   const dir = new THREE.Vector3();
   const stack = new THREE.Vector3();
   const quat = new THREE.Quaternion();
-  const scale = new THREE.Vector3(1, 1, 1);
-  const hairPoint = new THREE.Vector3();
+  const scaleV = new THREE.Vector3(1, 1, 1);
   const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   let calmMotion = 1;
-  let disposed = false;
 
-  function applyPose(blend) {
-    for (const name of posedNames) {
-      const node = figure.nodes[name];
-      const a = node.userData.radiant;
-      const b = node.userData.still;
-      node.position.lerpVectors(a.p, b.p, blend);
-      node.quaternion.copy(a.q).slerp(b.q, blend);
-    }
-    for (const finger of figure.fingers) {
-      const curl = THREE.MathUtils.lerp(finger.curlR, finger.curlS, blend);
-      finger.bone.rotation.x = curl;
-      if (finger.z !== undefined) {
-        finger.bone.rotation.z = THREE.MathUtils.lerp(finger.z, finger.stillZ, blend);
-      }
-    }
+  function bone(name, position) {
+    const g = new THREE.Group();
+    g.name = name;
+    g.position.set(position[0], position[1], position[2]);
+    group.add(g);
+    nodes[name] = g;
+    return g;
   }
 
-  function applyLife(time, blend) {
-    const breath = Math.sin(time * 1.45);
-    const calm = 1 - blend * 0.45;
-    figure.bodyMesh.scale.set(1 + breath * 0.018, 1, 1 + breath * 0.03 * calm);
-    figure.nodes.neck.position.y += breath * 0.01;
-    for (const side of ['L', 'R']) {
-      figure.nodes[`upper${side}`].position.y += breath * 0.014;
+  // Bones live in group space, where +X is the viewer's right and -Z is
+  // behind the figure. Feather curves grow along their own side's X, so the
+  // joint is placed on that side rather than on the mesh's pre-turn X.
+  function wingAnchor(side, localY, localZ, scale, modelY) {
+    return [side * 0.16 * scale, modelY + localY * scale, -localZ * scale];
+  }
+
+  function buildFigure(gltf) {
+    gltfRoot = gltf.scene;
+    let source = null;
+    gltf.scene.traverse((obj) => {
+      if (!source && obj.isMesh) source = obj;
+    });
+    if (!source || !source.geometry) {
+      console.error('Virgo model has no mesh');
+      return;
     }
-    const swayAmp = (1 - blend * 0.62) * calm * calmMotion;
+
+    const bodyGeo = takeTriangles(source.geometry, (x, y, z) => !isWing(x, y, z));
+    if (!bodyGeo) {
+      console.error('Virgo body mesh is empty after the wing cut');
+      return;
+    }
+    ownedGeometries.push(bodyGeo);
+
+    const box = bodyGeo.boundingBox;
+    const height = Math.max(0.2, box.max.y - box.min.y);
+    const scale = TARGET_BODY_HEIGHT / height;
+    const modelY = HEM_Y - box.min.y * scale;
+
+    const model = new THREE.Group();
+    model.name = 'figure';
+    model.scale.setScalar(scale);
+    model.position.y = modelY;
+    // The sculpt faces -Z. The camera sits on +Z.
+    model.rotation.y = Math.PI;
+    group.add(model);
+
+    const body = new THREE.Mesh(bodyGeo, surface);
+    body.name = 'body';
+    body.castShadow = false;
+    body.receiveShadow = false;
+    body.layers.enable(1);
+    model.add(body);
+
+    const span = box.max.y - box.min.y;
+    const shoulder = box.min.y + span * 0.76;
+    const mid = box.min.y + span * 0.64;
+    const low = box.min.y + span * 0.44;
+    const back = box.max.z + BACK_PAD;
+
+    bone('wingUL', wingAnchor(1, shoulder, back, scale, modelY));
+    bone('wingUR', wingAnchor(-1, shoulder, back, scale, modelY));
+    bone('wingML', wingAnchor(1, mid, back, scale, modelY));
+    bone('wingMR', wingAnchor(-1, mid, back, scale, modelY));
+    bone('wingLL', wingAnchor(1, low, back + 0.03, scale, modelY));
+    bone('wingLR', wingAnchor(-1, low, back + 0.03, scale, modelY));
+
+    const light = preferLight();
+    const specs = makeWingSpecs(light);
+    const rand = mulberry32(0xa11e);
+    const recipes = buildRecipes(specs, rand);
+    const featherGeo = createFeatherGeometry();
+    ownedGeometries.push(featherGeo);
+    wingList = specs.map((spec, index) => {
+      const count = recipes[index].length;
+      const mesh = new THREE.InstancedMesh(featherGeo, marble.wing, count);
+      mesh.name = spec.name;
+      mesh.frustumCulled = false;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.userData.contact = false;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const color = new THREE.Color();
+      for (let i = 0; i < count; i++) {
+        const lift = 0.9 + (1 - recipes[index][i].layerF) * 0.1;
+        color.setRGB(lift, lift, Math.min(1, lift + 0.01));
+        mesh.setColorAt(i, color);
+      }
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      group.add(mesh);
+      return { spec, mesh, recipes: recipes[index] };
+    });
+
+    ready = true;
+    group.updateMatrixWorld(true);
+  }
+
+  const loader = new GLTFLoader();
+  loader.load(
+    modelUrl(),
+    (gltf) => {
+      if (disposed) {
+        releaseGltf(gltf.scene);
+        return;
+      }
+      try {
+        buildFigure(gltf);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+    },
+  );
+
+  function applyLife(time, blend) {
+    const swayAmp = (1 - blend * 0.62) * calmMotion;
     const wingMotion = {
       wingUL: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, Math.sin(time * 0.62 + 1.1) * 0.07],
       wingUR: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, -Math.sin(time * 0.62 + 1.1) * 0.07],
-      wingML: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, Math.sin(time * 0.58) * 0.09 + breath * 0.028],
-      wingMR: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, -(Math.sin(time * 0.58) * 0.09 + breath * 0.028)],
+      wingML: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, Math.sin(time * 0.58) * 0.09],
+      wingMR: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, -Math.sin(time * 0.58) * 0.09],
       wingLL: [Math.sin(time * 0.46 + 1.4) * 0.06, 0, Math.sin(time * 0.4 + 0.8) * 0.05],
       wingLR: [Math.sin(time * 0.46 + 1.4) * 0.06, 0, -Math.sin(time * 0.4 + 0.8) * 0.05],
     };
     for (const name of Object.keys(wingMotion)) {
+      const node = nodes[name];
+      if (!node) continue;
       const [x, y, z] = wingMotion[name];
-      figure.nodes[name].rotation.set(x * swayAmp, y * swayAmp, z * swayAmp);
+      node.rotation.set(x * swayAmp, y * swayAmp, z * swayAmp);
     }
-  }
-
-  function updateHair(time, blend, motion) {
-    const geo = figure.hair.children[0].geometry;
-    figure.strands.forEach((strand, index) => {
-      const base = strand.base;
-      const current = strand.scratch;
-      for (let i = 0; i < base.length; i++) {
-        const t = base.length === 1 ? 0 : i / (base.length - 1);
-        const settledX = base[i].x * (1 - t * 0.62);
-        const settledY = base[i].y - t * 0.2;
-        const settledZ = THREE.MathUtils.lerp(base[i].z, -0.1, t * 0.7);
-        const flutter = Math.sin(time * 1.15 + index * 0.7 + t * 2.4) * 0.018 * t * (1 - blend * 0.55) * motion;
-        const flutter2 = Math.sin(time * 0.45 + index) * 0.012 * t * motion;
-        hairPoint.set(
-          THREE.MathUtils.lerp(base[i].x, settledX, blend) + flutter,
-          THREE.MathUtils.lerp(base[i].y, settledY, blend) + flutter2 * 0.4,
-          THREE.MathUtils.lerp(base[i].z, settledZ, blend) + flutter * 0.35,
-        );
-        current[i].copy(hairPoint);
-      }
-      writeRibbon(geo, current, strand.width, strand.up, strand.vertex, strand.curve);
-    });
-    geo.computeVertexNormals();
-    const wind = (1 - blend * 0.7) * motion;
-    figure.hair.rotation.z = Math.sin(time * 0.7) * 0.025 * wind;
-    figure.hair.rotation.x = Math.sin(time * 0.5 + 0.4) * 0.015 * wind;
   }
 
   function updateFeathers(time, blend) {
     invGroup.copy(group.matrixWorld).invert();
     const breathLift = Math.sin(time * 1.45);
-    for (const wing of wings) {
+    for (const wing of wingList) {
       const spec = wing.spec;
-      const node = figure.nodes[spec.bone];
+      const node = nodes[spec.bone];
+      if (!node) continue;
       boneM.multiplyMatrices(invGroup, node.matrixWorld);
       lerpPose(scratchP, scratchH, spec.open, spec.closed, blend);
       const open = spec.open;
@@ -1168,8 +711,6 @@ export function createAngel(marble) {
           lenMul *
           (0.84 + recipe.seed * 0.3) *
           scallop;
-        // Separate layers along the wing normal by more than the vane camber,
-        // plus a stable per-feather bias so neighbors don't sit on one plane.
         const lift = (recipe.layerF - 0.5) * 0.05 + (recipe.alt - 0.5) * 0.012;
         origin.addScaledVector(stack, lift);
         origin.y += breathLift * 0.004 * (1 - blend);
@@ -1178,39 +719,28 @@ export function createAngel(marble) {
         basisQuat(quat, dir, stack);
         _q.setFromAxisAngle(dir, (recipe.alt - 0.5) * 0.35);
         quat.multiply(_q);
-        scale.set(widthMul * (0.82 + recipe.seed * 0.36) * (1 - recipe.layerF * 0.18), Math.max(0.05, len), 1);
-        _m.compose(origin, quat, scale);
+        scaleV.set(widthMul * (0.82 + recipe.seed * 0.36) * (1 - recipe.layerF * 0.18), Math.max(0.05, len), 1);
+        _m.compose(origin, quat, scaleV);
         wing.mesh.setMatrixAt(index, _m);
       });
       wing.mesh.instanceMatrix.needsUpdate = true;
     }
   }
 
-  const bodyMeshes = [];
-  figure.hips.traverse((obj) => {
-    if (obj.isMesh) bodyMeshes.push(obj);
-  });
-
-  applyPose(0);
-  group.updateMatrixWorld(true);
-  for (const mesh of bodyMeshes) stampUv(mesh);
-
   return {
     group,
     update(time) {
-      if (disposed) return;
+      if (disposed || !ready) return;
       if (!Number.isFinite(formBlend)) formBlend = 0;
       const t = Number.isFinite(time) ? time : 0;
       const reduce = motionQuery && motionQuery.matches ? 0.2 : 1;
       calmMotion = reduce;
       const motion = (1 - formBlend * 0.7) * reduce;
-      group.position.y = Math.sin(t * 0.62) * 0.085 * motion;
+      group.position.y = Math.sin(t * 0.62) * 0.06 * motion;
       group.position.x = Math.sin(t * 0.23) * 0.02 * motion;
-      group.rotation.z = Math.sin(t * 0.31) * 0.018 * motion;
-      group.rotation.y = Math.sin(t * 0.17) * 0.04 * motion;
-      applyPose(formBlend);
+      group.rotation.z = Math.sin(t * 0.31) * 0.012 * motion;
+      group.rotation.y = Math.sin(t * 0.17) * 0.03 * motion;
       applyLife(t, formBlend);
-      updateHair(t, formBlend, reduce);
       group.updateMatrixWorld(true);
       updateFeathers(t, formBlend);
     },
@@ -1224,14 +754,16 @@ export function createAngel(marble) {
     dispose() {
       if (disposed) return;
       disposed = true;
-      const geometries = new Set();
-      group.traverse((obj) => {
-        if (obj.geometry && !obj.geometry.userData.template) geometries.add(obj.geometry);
-        if (obj.isInstancedMesh) obj.dispose();
-      });
-      for (const geometry of geometries) geometry.dispose();
-      hairMat.dispose();
-      jointMat.dispose();
+      ready = false;
+      for (const wing of wingList) {
+        if (wing.mesh) wing.mesh.dispose();
+      }
+      wingList = [];
+      for (const geometry of ownedGeometries) geometry.dispose();
+      ownedGeometries.length = 0;
+      surface.dispose();
+      releaseGltf(gltfRoot);
+      gltfRoot = null;
       group.removeFromParent();
     },
   };

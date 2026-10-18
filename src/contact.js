@@ -66,9 +66,8 @@ export function createContact(renderer, angel, quality) {
   cam.updateProjectionMatrix();
   cam.updateMatrixWorld();
 
-  angel.traverse((obj) => {
-    if (obj.isMesh && !obj.isInstancedMesh) obj.layers.enable(1);
-  });
+  // The body mesh arrives after the GLB loads, so tag casters again each update.
+  markContactCasters(angel);
 
   const matrix = new THREE.Matrix4();
   const bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
@@ -97,6 +96,14 @@ export function createContact(renderer, angel, quality) {
   let disposed = false;
   const stride = low ? 2 : 1;
 
+  function markContactCasters(root) {
+    root.traverse((obj) => {
+      if (!obj.isMesh || obj.isInstancedMesh) return;
+      if (obj.userData.contact === false) return;
+      obj.layers.enable(1);
+    });
+  }
+
   function blit(src, dest, dirX, dirY) {
     blurMat.uniforms.tDiffuse.value = src.texture;
     blurMat.uniforms.uTexel.value.set(dirX / size, dirY / size);
@@ -113,6 +120,7 @@ export function createContact(renderer, angel, quality) {
       if (stride > 1 && frame % stride !== 1) return;
       const scene = angel.parent;
       if (!scene) return;
+      markContactCasters(angel);
       const prevTarget = renderer.getRenderTarget();
       const prevAlpha = renderer.getClearAlpha();
       renderer.getClearColor(clear);

@@ -23,10 +23,10 @@ const fragmentShader = /* glsl */ `
     float along = vUv.y;
     float ray = sin(around * 48.0 + uTime * 0.22 + sin(around * 13.0) * 1.6);
     ray = smoothstep(0.2, 0.95, ray * 0.5 + 0.5);
-    float streak = pow(ray, 2.4);
+    float streak = pow(ray, 2.8);
     float fade = pow(1.0 - along, 1.7) * smoothstep(0.0, 0.08, 1.0 - along);
-    float alpha = (streak * 0.55 + 0.06) * fade * uFade;
-    if (alpha < 0.01) discard;
+    float alpha = streak * 0.42 * fade * uFade;
+    if (alpha < 0.02) discard;
     gl_FragColor = vec4(uColor, alpha);
   }
 `;
@@ -59,7 +59,7 @@ export function createMoonGlow(moon, quality) {
 
   const height = 6.4;
   const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(low ? 0.28 : 0.16, low ? 0.9 : 1.35, height, low ? 8 : 16, 1, true),
+    new THREE.CylinderGeometry(low ? 0.05 : 0.04, low ? 0.34 : 0.28, height, low ? 24 : 40, 1, true),
     material,
   );
   mesh.name = 'moon-shaft';

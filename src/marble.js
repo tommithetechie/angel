@@ -3,7 +3,7 @@ import * as THREE from 'three';
 let SIZE = 1024;
 let LOW = 512;
 let UNIT = 1;
-const CELLS = 22;
+const CELLS = 18;
 
 function px(n) {
   return n * UNIT;
@@ -120,7 +120,7 @@ function makePaths(rand, count, step, wander, branchChance) {
     let y = rand() * SIZE;
     let angle = rand() * Math.PI * 2;
     const points = [{ x, y }];
-    const segs = 10 + Math.floor(rand() * 12);
+    const segs = 9 + Math.floor(rand() * 10);
     for (let s = 0; s < segs; s++) {
       angle += (rand() - 0.5) * wander;
       const len = step * (0.55 + rand());
@@ -131,15 +131,15 @@ function makePaths(rand, count, step, wander, branchChance) {
         const branch = [{ x, y }];
         let bx = x;
         let by = y;
-        let ba = angle + (rand() < 0.5 ? -1 : 1) * (0.6 + rand() * 0.8);
-        const bsegs = 3 + Math.floor(rand() * 5);
+        let ba = angle + (rand() < 0.5 ? -1 : 1) * (0.55 + rand() * 0.7);
+        const bsegs = 2 + Math.floor(rand() * 4);
         for (let b = 0; b < bsegs; b++) {
-          ba += (rand() - 0.5) * wander * 0.8;
-          bx += Math.cos(ba) * len * 0.72;
-          by += Math.sin(ba) * len * 0.72;
-          branch.push({ x: bx, y: by });
+          ba += (rand() - 0.5) * wander * 0.75;
+          bx += Math.cos(ba) * len * 0.68;
+          by += Math.sin(ba) * len * 0.68;
+          branch.push({ x, bx, y: by });
         }
-        paths.push(branch);
+        paths.push(branch.map((pt) => ({ x: pt.bx ?? pt.x, y: pt.y })));
       }
     }
     paths.push(points);
@@ -224,12 +224,12 @@ function paintStone(rand) {
   const data = image.data;
   const warpN = makeNoise(rand, 16);
   const cloudN = makeNoise(rand, 32);
-  const ivory = [247, 244, 237];
-  const cream = [233, 227, 216];
-  const mist = [206, 208, 212];
-  const gray = [158, 162, 170];
-  const slate = [92, 96, 104];
-  const ink = [48, 50, 56];
+  // Broad quiet ivory-silver stone with subtle tonal clouds
+  const ivory = [246, 244, 240];
+  const silver = [232, 233, 236];
+  const mist = [214, 217, 222];
+  const gray = [182, 186, 194];
+  const slate = [138, 142, 152];
 
   for (let y = 0; y < LOW; y++) {
     const v = y / LOW;
@@ -237,21 +237,18 @@ function paintStone(rand) {
       const u = x / LOW;
       const wx = fbm(warpN, u, v, 4);
       const wy = fbm(warpN, u + 5.2, v + 1.3, 4);
-      const uu = u + (wx - 0.5) * 0.42;
-      const vv = v + (wy - 0.5) * 0.42;
-      const cloud = fbm(cloudN, uu * 1.25, vv * 1.35, 5);
-      const fine = fbm(cloudN, uu * 3.4 + 2.0, vv * 3.1, 3);
-      const flow = uu * 1.55 + (wx - 0.5) * 1.15 + cloud * 0.22;
+      const uu = u + (wx - 0.5) * 0.34;
+      const vv = v + (wy - 0.5) * 0.34;
+      const cloud = fbm(cloudN, uu * 1.15, vv * 1.25, 4);
+      const fine = fbm(cloudN, uu * 2.8 + 2.0, vv * 2.6, 3);
+      const flow = uu * 1.35 + (wx - 0.5) * 0.9 + cloud * 0.18;
       const band = Math.abs(Math.sin(flow * Math.PI * 2));
-      const vein = smoothstep(0.34, 0.02, band);
-      const thread = Math.abs(Math.sin((vv * 4.2 + wy * 2.4) * Math.PI * 2));
-      const vein2 = smoothstep(0.1, 0.0, thread) * (0.35 + fine * 0.45);
+      const vein = smoothstep(0.24, 0.02, band);
 
-      let rgb = mix3(ivory, cream, cloud * 0.72);
-      rgb = mix3(rgb, mist, Math.max(0, fine - 0.42) * 0.55);
-      rgb = mix3(rgb, gray, vein * 0.62);
-      rgb = mix3(rgb, slate, vein * vein * 0.5 + vein2 * 0.42);
-      rgb = mix3(rgb, ink, vein2 * vein * 0.35);
+      let rgb = mix3(ivory, silver, cloud * 0.68);
+      rgb = mix3(rgb, mist, Math.max(0, fine - 0.45) * 0.42);
+      rgb = mix3(rgb, gray, vein * 0.36);
+      rgb = mix3(rgb, slate, vein * vein * 0.24);
 
       const o = (y * LOW + x) * 4;
       data[o] = clampByte(rgb[0]);
@@ -269,13 +266,12 @@ function paintStone(rand) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(low, 0, 0, SIZE, SIZE);
 
-  const soft = makePaths(rand, 7, px(70), 0.85, 0.12);
-  strokeWrapped(ctx, soft, 'rgba(132,136,144,0.20)', px(22));
-  strokeWrapped(ctx, soft, 'rgba(74,78,86,0.30)', px(6));
+  const soft = makePaths(rand, 5, px(76), 0.72, 0.1);
+  strokeWrapped(ctx, soft, 'rgba(156,160,170,0.14)', px(16));
+  strokeWrapped(ctx, soft, 'rgba(104,108,118,0.18)', px(4));
 
-  const threads = makePaths(rand, 16, px(46), 1.05, 0.2);
-  strokeWrapped(ctx, threads, 'rgba(58,62,70,0.45)', px(3.2));
-  strokeWrapped(ctx, threads, 'rgba(22,24,28,0.82)', px(1.25));
+  const threads = makePaths(rand, 8, px(54), 0.88, 0.14);
+  strokeWrapped(ctx, threads, 'rgba(72,76,84,0.28)', px(1.8));
 
   return { color, ctx };
 }
@@ -288,12 +284,13 @@ function buildCrackle(rand, stone) {
   for (let j = 0; j < CELLS; j++) {
     for (let i = 0; i < CELLS; i++) {
       const k = j * CELLS + i;
-      sitesX[k] = (i + 0.5 + (rand() - 0.5) * 0.86) * cell;
-      sitesY[k] = (j + 0.5 + (rand() - 0.5) * 0.86) * cell;
+      sitesX[k] = (i + 0.5 + (rand() - 0.5) * 0.84) * cell;
+      sitesY[k] = (j + 0.5 + (rand() - 0.5) * 0.84) * cell;
     }
   }
 
   const warp = makeNoise(rand, 8);
+  const maskN = makeNoise(rand, 6);
   const src = stone.getImageData(0, 0, SIZE, SIZE);
   const base = src.data;
   const color = new Uint8ClampedArray(base);
@@ -311,8 +308,8 @@ function buildCrackle(rand, stone) {
       const o = (row + x) * 4;
       const u = x / SIZE;
       const v = y / SIZE;
-      let sx = x + (warp(u * 2.2, v * 2.2) - 0.5) * px(18);
-      let sy = y + (warp(u * 2.2 + 3.1, v * 2.2 + 1.4) - 0.5) * px(18);
+      const sx = x + (warp(u * 2.0, v * 2.0) - 0.5) * px(16);
+      const sy = y + (warp(u * 2.0 + 3.1, v * 2.0 + 1.4) - 0.5) * px(16);
       let wrappedX = sx % SIZE;
       let wrappedY = sy % SIZE;
       if (wrappedX < 0) wrappedX += SIZE;
@@ -348,29 +345,31 @@ function buildCrackle(rand, stone) {
       const lo = i1 < i2 ? i1 : i2;
       const hi = i1 < i2 ? i2 : i1;
       const fade = hash01(lo + 3, hi * 17 + 1);
-      const strength = smoothstep(0.12, 0.48, fade);
-      const isGold = fade > 0.6;
-      const crack = smoothstep(px(5.4), px(0.35), edge) * (0.28 + 0.72 * strength);
-      const gold = isGold ? smoothstep(px(3.15), px(0.2), edge) * strength : 0;
-      const goldCore = isGold ? smoothstep(px(1.35), px(0.12), edge) * strength : 0;
-      const glow = isGold ? smoothstep(px(8.2), px(0.6), edge) * strength : 0;
+      // Preserve broad quiet areas: only selective regions carry visible fractures
+      const regionMask = smoothstep(0.42, 0.68, maskN(u * 1.5 + 0.7, v * 1.5 + 1.9));
+      const strength = smoothstep(0.46, 0.82, fade) * (0.25 + 0.75 * regionMask);
+      const isGold = fade > 0.72 && regionMask > 0.2;
+      const crack = smoothstep(px(2.4), px(0.28), edge) * strength;
+      const gold = isGold ? smoothstep(px(1.85), px(0.18), edge) * strength : 0;
+      const goldCore = isGold ? smoothstep(px(0.95), px(0.1), edge) * strength : 0;
+      const glow = isGold ? smoothstep(px(4.2), px(0.4), edge) * strength : 0;
 
       const br = base[o];
       const bg = base[o + 1];
       const bb = base[o + 2];
       const lum = (0.299 * br + 0.587 * bg + 0.114 * bb) / 255;
-      const softVein = smoothstep(ivoryLum, 0.55, lum);
+      const softVein = smoothstep(ivoryLum, 0.6, lum);
 
       let r = br;
       let g = bg;
       let b = bb;
-      const ink = Math.min(1, crack * 0.92);
-      r = r * (1 - ink) + 14 * ink;
-      g = g * (1 - ink) + 15 * ink;
-      b = b * (1 - ink) + 18 * ink;
-      const gr = 196 + goldCore * 59;
-      const gg = 132 + goldCore * 96;
-      const gb = 48 + goldCore * 92;
+      const ink = Math.min(1, crack * 0.72);
+      r = r * (1 - ink) + 28 * ink;
+      g = g * (1 - ink) + 30 * ink;
+      b = b * (1 - ink) + 36 * ink;
+      const gr = 208 + goldCore * 47;
+      const gg = 148 + goldCore * 84;
+      const gb = 62 + goldCore * 82;
       r = r * (1 - gold) + gr * gold;
       g = g * (1 - gold) + gg * gold;
       b = b * (1 - gold) + gb * gold;
@@ -381,36 +380,37 @@ function buildCrackle(rand, stone) {
       color[o + 3] = 255;
 
       const grain = hash01(x, y);
-      let roughV = 42 + grain * 18 + softVein * 28;
-      roughV = mix(roughV, 168, Math.min(1, crack * (1 - gold)));
-      roughV = mix(roughV, 36 + grain * 14, gold);
-      roughV = mix(roughV, 24, goldCore);
+      let roughV = 44 + grain * 12 + softVein * 18;
+      roughV = mix(roughV, 132, Math.min(1, crack * (1 - gold)));
+      roughV = mix(roughV, 32 + grain * 10, gold);
+      roughV = mix(roughV, 20, goldCore);
       const rb = clampByte(roughV);
       rough[o] = rough[o + 1] = rough[o + 2] = rb;
       rough[o + 3] = 255;
 
-      const metalV = clampByte(smoothstep(0.18, 0.72, gold) * 255);
+      const metalV = clampByte(smoothstep(0.18, 0.68, gold) * 255);
       metal[o] = metal[o + 1] = metal[o + 2] = metalV;
       metal[o + 3] = 255;
 
-      const e = Math.min(1, gold * 0.72 + glow * 0.38);
+      const e = Math.min(1, gold * 0.76 + glow * 0.28);
       if (e > 0.004) {
         emissive[o] = clampByte(255 * e);
-        emissive[o + 1] = clampByte((168 + goldCore * 70) * e);
-        emissive[o + 2] = clampByte((64 + goldCore * 70) * e);
+        emissive[o + 1] = clampByte((176 + goldCore * 64) * e);
+        emissive[o + 2] = clampByte((74 + goldCore * 64) * e);
       }
       emissive[o + 3] = 255;
 
+      // Subtle height variation so cracks do not produce unwanted surface dents
       const micro = hash01(x * 3 + 11, y * 5 + 2);
-      let h = 0.58 + (micro - 0.5) * 0.045 + (grain - 0.5) * 0.02;
-      h -= softVein * 0.07;
-      h -= crack * 0.2;
-      h += goldCore * 0.11;
+      let h = 0.58 + (micro - 0.5) * 0.015;
+      h -= softVein * 0.018;
+      h -= crack * 0.035;
+      h += goldCore * 0.03;
       height[row + x] = h;
 
-      if (gold > 0.25) {
-        let ax = sitesX[i1];
-        let ay = sitesY[i1];
+      if (gold > 0.2) {
+        const ax = sitesX[i1];
+        const ay = sitesY[i1];
         const adx = wrapDelta(sitesX[i2] - ax);
         const ady = wrapDelta(sitesY[i2] - ay);
         const ppx = wrapDelta(sx - ax);
@@ -429,19 +429,20 @@ function buildCrackle(rand, stone) {
 }
 
 function layHeroVeins(rand, colorCtx, maps) {
-  const heroes = makePaths(rand, 8, px(58), 0.72, 0.28);
-  strokeWrapped(colorCtx, heroes, 'rgba(8,8,10,0.95)', px(8));
-  strokeWrapped(colorCtx, heroes, '#7a4e12', px(4.6));
-  strokeWrapped(colorCtx, heroes, '#e7b44a', px(2.5));
-  strokeWrapped(colorCtx, heroes, '#ffe6b0', px(1.05));
+  // Restrained, fine broken gold veins rather than wide dark trenches
+  const heroes = makePaths(rand, 5, px(56), 0.68, 0.22);
+  strokeWrapped(colorCtx, heroes, 'rgba(18,19,24,0.75)', px(3.4));
+  strokeWrapped(colorCtx, heroes, '#8a5a18', px(2.2));
+  strokeWrapped(colorCtx, heroes, '#eab954', px(1.35));
+  strokeWrapped(colorCtx, heroes, '#ffebc0', px(0.75));
 
   const mask = document.createElement('canvas');
   mask.width = mask.height = SIZE;
   const maskCtx = mask.getContext('2d', { willReadFrequently: true });
   maskCtx.globalCompositeOperation = 'lighter';
-  strokeWrapped(maskCtx, heroes, 'rgb(255,0,0)', px(8));
-  strokeWrapped(maskCtx, heroes, 'rgb(0,255,0)', px(9));
-  strokeWrapped(maskCtx, heroes, 'rgb(0,0,255)', px(3.1));
+  strokeWrapped(maskCtx, heroes, 'rgb(255,0,0)', px(3.6));
+  strokeWrapped(maskCtx, heroes, 'rgb(0,255,0)', px(4.6));
+  strokeWrapped(maskCtx, heroes, 'rgb(0,0,255)', px(1.8));
 
   const phaseCanvas = document.createElement('canvas');
   phaseCanvas.width = phaseCanvas.height = SIZE;
@@ -453,7 +454,7 @@ function layHeroVeins(rand, colorCtx, maps) {
     phaseImage.data[o + 3] = 255;
   }
   phaseCtx.putImageData(phaseImage, 0, 0);
-  strokePhase(phaseCtx, heroes, px(4));
+  strokePhase(phaseCtx, heroes, px(2.6));
 
   const maskData = maskCtx.getImageData(0, 0, SIZE, SIZE).data;
   const { rough, metal, emissive, height } = maps;
@@ -464,24 +465,24 @@ function layHeroVeins(rand, colorCtx, maps) {
     const glowA = maskData[o + 1] / 255;
     const core = maskData[o + 2] / 255;
     if (crackA < 0.04 && glowA < 0.04 && core < 0.04) continue;
-    height[i] -= crackA * 0.16;
-    height[i] += core * 0.13;
+    height[i] -= crackA * 0.03;
+    height[i] += core * 0.035;
     if (core > 0.12) {
-      const rb = clampByte(mix(rough[o], 28, core));
+      const rb = clampByte(mix(rough[o], 24, core));
       rough[o] = rough[o + 1] = rough[o + 2] = rb;
-      const mv = clampByte(Math.max(metal[o] * (1 - crackA * 0.5), core * 255));
+      const mv = clampByte(Math.max(metal[o] * (1 - crackA * 0.4), core * 255));
       metal[o] = metal[o + 1] = metal[o + 2] = mv;
     } else if (crackA > 0.25) {
-      const rb = clampByte(mix(rough[o], 155, crackA));
+      const rb = clampByte(mix(rough[o], 124, crackA));
       rough[o] = rough[o + 1] = rough[o + 2] = rb;
       const mv = clampByte(metal[o] * (1 - crackA));
       metal[o] = metal[o + 1] = metal[o + 2] = mv;
     }
-    const e = Math.min(1, core * 0.92 + glowA * 0.24);
+    const e = Math.min(1, core * 0.88 + glowA * 0.18);
     if (e > emissive[o] / 255) {
       emissive[o] = clampByte(255 * e);
-      emissive[o + 1] = clampByte(208 * e);
-      emissive[o + 2] = clampByte(112 * e);
+      emissive[o + 1] = clampByte(210 * e);
+      emissive[o + 2] = clampByte(116 * e);
     }
   }
 
@@ -492,7 +493,7 @@ function bleedEmissive(emissive) {
   const w = SIZE;
   const src = emissive;
   const tmp = new Uint8ClampedArray(src.length);
-  const rad = Math.max(1, Math.round(px(2)));
+  const rad = Math.max(1, Math.round(px(1.5)));
   for (let y = 0; y < w; y++) {
     for (let x = 0; x < w; x++) {
       let r = 0;
@@ -527,9 +528,9 @@ function bleedEmissive(emissive) {
       }
       const o = (y * w + x) * 4;
       const n = rad * 2 + 1;
-      src[o] = Math.max(src[o], (r / n) * 0.72);
-      src[o + 1] = Math.max(src[o + 1], (g / n) * 0.72);
-      src[o + 2] = Math.max(src[o + 2], (b / n) * 0.72);
+      src[o] = Math.max(src[o], (r / n) * 0.62);
+      src[o + 1] = Math.max(src[o + 1], (g / n) * 0.62);
+      src[o + 2] = Math.max(src[o + 2], (b / n) * 0.62);
     }
   }
 }
@@ -549,8 +550,8 @@ function normalsFromHeight(height) {
       const step = Math.max(1, Math.round(px(2)));
       const dx = at(x - step, y) - at(x + step, y);
       const dy = at(x, y - step) - at(x, y + step);
-      let nx = dx * 3.1;
-      let ny = dy * 3.1;
+      let nx = dx * 0.9;
+      let ny = dy * 0.9;
       let nz = 1;
       const len = Math.hypot(nx, ny, nz);
       nx /= len;
@@ -586,7 +587,11 @@ function putCanvas(image) {
 const SHADER_DECL = /* glsl */ `
 uniform float uMarbleTime;
 uniform float uMarbleStill;
+uniform float uMarbleTransition;
+uniform float uNeutralSpecular;
+uniform float uClay;
 uniform sampler2D uMarblePhase;
+varying vec3 vAngelPos;
 `;
 
 const BODY_DECL = /* glsl */ `
@@ -604,16 +609,17 @@ vec4 marbleSample(sampler2D tex, vec3 p, vec3 w) {
 `;
 
 const BODY_MAP = /* glsl */ `
-vec3 marbleP = (uMarbleMatrix * vec4(vMarblePos, 1.0)).xyz * 0.48;
+vec3 marbleP = vAngelPos * 0.42;
 vec3 marbleN = normalize(uMarbleNormalMatrix * vMarbleNormal);
 vec3 marbleW = abs(marbleN);
 marbleW = pow(max(marbleW, vec3(1.0e-4)), vec3(4.0));
 marbleW /= (marbleW.x + marbleW.y + marbleW.z);
+vec4 sampledMarbleMap = vec4(0.92, 0.92, 0.91, 1.0);
 #ifdef USE_MAP
-  vec4 sampledDiffuseColor;
-  if (uProject > 0.5) sampledDiffuseColor = marbleSample(map, marbleP, marbleW);
-  else sampledDiffuseColor = texture2D(map, vMapUv);
-  diffuseColor *= sampledDiffuseColor;
+  if (uProject > 0.5) sampledMarbleMap = marbleSample(map, marbleP, marbleW);
+  else sampledMarbleMap = texture2D(map, vMapUv);
+  sampledMarbleMap = mix(sampledMarbleMap, vec4(0.92, 0.92, 0.91, 1.0), max(uNeutralSpecular, uClay));
+  diffuseColor *= sampledMarbleMap;
 #endif
 `;
 
@@ -623,7 +629,7 @@ float roughnessFactor = roughness;
   vec4 texelRoughness;
   if (uProject > 0.5) texelRoughness = marbleSample(roughnessMap, marbleP, marbleW);
   else texelRoughness = texture2D(roughnessMap, vRoughnessMapUv);
-  roughnessFactor *= texelRoughness.g;
+  roughnessFactor *= mix(texelRoughness.g, 0.24, uNeutralSpecular);
 #endif
 `;
 
@@ -633,22 +639,8 @@ float metalnessFactor = metalness;
   vec4 texelMetalness;
   if (uProject > 0.5) texelMetalness = marbleSample(metalnessMap, marbleP, marbleW);
   else texelMetalness = texture2D(metalnessMap, vMetalnessMapUv);
-  metalnessFactor *= texelMetalness.b;
+  metalnessFactor *= mix(texelMetalness.b, 0.0, max(uNeutralSpecular, uClay));
 #endif
-`;
-
-const BODY_NORMAL = /* glsl */ `
-{
-  float marbleH = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-  vec3 sigmaX = dFdx(vViewPosition);
-  vec3 sigmaY = dFdy(vViewPosition);
-  vec3 r1 = cross(sigmaY, normal);
-  vec3 r2 = cross(normal, sigmaX);
-  float det = dot(sigmaX, r1);
-  vec3 grad = sign(det) * (dFdx(marbleH) * r1 + dFdy(marbleH) * r2);
-  vec3 bumped = normalize(max(abs(det), 1.0e-5) * normal - grad * 5.6);
-  normal = mix(normal, bumped, uProject);
-}
 `;
 
 const BODY_EMISSIVE = /* glsl */ `
@@ -656,7 +648,7 @@ const BODY_EMISSIVE = /* glsl */ `
   vec4 emissiveColor;
   if (uProject > 0.5) emissiveColor = marbleSample(emissiveMap, marbleP, marbleW);
   else emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
-  totalEmissiveRadiance *= emissiveColor.rgb;
+  totalEmissiveRadiance *= emissiveColor.rgb * (1.0 - max(uNeutralSpecular, uClay));
 #endif
 `;
 
@@ -669,49 +661,207 @@ const BODY_PHASE = /* glsl */ `
   float band = smoothstep(0.02, 0.18, travel) * smoothstep(0.64, 0.28, travel);
   band *= 1.0 - smoothstep(0.045, 0.2, fwidth(phase));
   float breath = 0.92 + 0.08 * sin(uMarbleTime * 0.48 + phase * 6.2831853);
-  float glow = (0.84 + 0.16 * band) * breath;
-  glow *= mix(1.0, 0.07, uMarbleStill);
+  float glow = (0.80 + 0.18 * band) * breath;
+  glow *= mix(0.54, 0.04, uMarbleStill) * (1.0 - max(uNeutralSpecular, uClay));
   float eLuma = dot(totalEmissiveRadiance, vec3(0.2126, 0.7152, 0.0722));
-  vec3 cooled = vec3(0.58, 0.66, 0.56) * eLuma;
+  vec3 cooled = vec3(0.58, 0.68, 0.74) * eLuma;
   totalEmissiveRadiance = mix(totalEmissiveRadiance, cooled, uMarbleStill) * glow;
 }
 `;
 
-const SHADER_FORM = /* glsl */ `
+// Radiant body: glossy charcoal/obsidian with subtle pale/gold fracture accents.
+// Still body: shifts smoothly to quiet warm-cool ivory marble.
+const BODY_FORM = /* glsl */ `
 {
-  vec3 albedo = diffuseColor.rgb;
-  float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
-  vec3 pale = mix(albedo, vec3(luma), 0.42);
-  pale *= vec3(0.90, 0.96, 1.08);
-  pale += vec3(0.03, 0.045, 0.08);
-  pale = mix(pale, vec3(0.78, 0.83, 0.90), smoothstep(0.55, 0.06, luma) * 0.62);
-  diffuseColor.rgb = mix(albedo, clamp(pale, 0.0, 1.0), uMarbleStill);
-  vec3 paleGold = mix(diffuseColor.rgb, vec3(0.55, 0.60, 0.58), 0.82);
-  diffuseColor.rgb = mix(diffuseColor.rgb, paleGold, uMarbleStill * smoothstep(0.15, 0.65, metalnessFactor));
+  vec3 texRgb = diffuseColor.rgb;
+  float luma = dot(texRgb, vec3(0.2126, 0.7152, 0.0722));
+  float patternOn = 1.0 - max(uNeutralSpecular, uClay);
+  float goldMask = smoothstep(0.16, 0.62, metalnessFactor) * patternOn;
+  float paleCrack = smoothstep(0.66, 0.24, luma) * (1.0 - goldMask) * patternOn;
+
+  // Glossy charcoal/obsidian base in Radiant, with subtle pale mineral lines and gold fractures
+  vec3 obsidian = mix(vec3(0.015, 0.016, 0.020), vec3(0.034, 0.036, 0.044), smoothstep(0.48, 0.98, luma));
+  vec3 fractureTint = vec3(0.22, 0.21, 0.20);
+  vec3 goldTint = vec3(0.92, 0.68, 0.28);
+  vec3 radiantBody = mix(obsidian, fractureTint, paleCrack * 0.44);
+  radiantBody = mix(radiantBody, goldTint, goldMask * 0.92);
+
+  // Quiet ivory stone in Still with subdued silver-champagne veins
+  vec3 stillIvory = mix(vec3(0.73, 0.77, 0.82), vec3(0.87, 0.90, 0.93), smoothstep(0.45, 0.95, luma));
+  stillIvory = mix(stillIvory, vec3(0.58, 0.65, 0.72), paleCrack * 0.28);
+  stillIvory = mix(stillIvory, vec3(0.66, 0.72, 0.77), goldMask * 0.50);
+
+  // Perceptual curve so midpoint (uMarbleStill = 0.5) reads as balanced slate-ivory
+  float stillCurve = smoothstep(0.12, 0.96, uMarbleStill * uMarbleStill);
+  vec3 formColor = mix(radiantBody, stillIvory, stillCurve);
+  diffuseColor.rgb = mix(formColor, vec3(0.52, 0.52, 0.50), uClay);
+
+  // Broad readable specular lobe across dark glossy anatomy without pinprick joint hotspots
+  float targetRough = mix(0.24, 0.34, uMarbleStill);
+  roughnessFactor = mix(targetRough, roughnessFactor * 0.68 + 0.14, 0.34 * patternOn);
+  roughnessFactor = mix(roughnessFactor, 0.15, goldMask * 0.68);
+  roughnessFactor = mix(roughnessFactor, 0.84, uClay);
+  metalnessFactor *= patternOn;
+}
+`;
+
+// Swept volumetric hair: related dark charcoal finish in Radiant with broader, softer highlights
+// and reduced crackle so locks remain distinct from the glossy body; pearl-ash ivory in Still.
+const HAIR_FORM = /* glsl */ `
+{
+  vec3 texRgb = diffuseColor.rgb;
+  float luma = dot(texRgb, vec3(0.2126, 0.7152, 0.0722));
+  float patternOn = 1.0 - max(uNeutralSpecular, uClay);
+  float goldMask = smoothstep(0.26, 0.74, metalnessFactor) * patternOn;
+
+  vec3 radiantHair = mix(vec3(0.030, 0.028, 0.036), vec3(0.068, 0.064, 0.078), smoothstep(0.44, 0.98, luma));
+  radiantHair = mix(radiantHair, vec3(0.76, 0.56, 0.26), goldMask * 0.42);
+
+  vec3 stillHair = mix(vec3(0.46, 0.53, 0.62), vec3(0.64, 0.71, 0.79), smoothstep(0.44, 0.96, luma));
+
+  float stillCurve = smoothstep(0.12, 0.96, uMarbleStill * uMarbleStill);
+  vec3 formColor = mix(radiantHair, stillHair, stillCurve);
+  diffuseColor.rgb = mix(formColor, vec3(0.52, 0.52, 0.50), uClay);
+  roughnessFactor = mix(mix(0.30, 0.40, uMarbleStill), 0.84, uClay);
+  metalnessFactor *= 0.25 * patternOn;
+}
+`;
+
+// Radiant wings: ivory-silver feather faces, darker charcoal-slate roots and recessed layers
+// (encoded in vFeatherInst + vFeatherLocalUv + vColor), and fine broken gold veins.
+// Still wings: cool pale silver with preserved layer separation and crisp individual feather blades.
+const WING_FORM = /* glsl */ `
+{
+  float patternOn = 1.0 - max(uNeutralSpecular, uClay);
+  float instRoot = clamp(vFeatherInst.r, 0.05, 1.0);
+  float instRowLayer = clamp(vFeatherInst.g, 0.05, 1.0);
+  float instRole = clamp(vFeatherInst.b, 0.0, 1.0);
+  #ifdef USE_COLOR
+    vec3 rawTex = diffuseColor.rgb / max(vColor.rgb, vec3(0.001));
+    float vShade = clamp(vColor.g / max(vFeatherInst.g, 0.001), 0.0, 1.0);
+  #else
+    vec3 rawTex = diffuseColor.rgb;
+    float vShade = 0.88;
+  #endif
+  vec3 texRgb = mix(rawTex, vec3(0.92, 0.91, 0.89), max(uNeutralSpecular, uClay));
+  float luma = dot(texRgb, vec3(0.2126, 0.7152, 0.0722));
+  float goldMask = smoothstep(0.18, 0.65, metalnessFactor) * patternOn;
+  float veinMask = smoothstep(0.68, 0.25, luma) * (1.0 - goldMask) * patternOn;
+
+  // Local feather base-to-tip and lateral vane contour so individual blades and shafts remain distinct
+  float isPrimary = 1.0 - smoothstep(0.0, 0.35, instRole);
+  float isSecondary = smoothstep(0.15, 0.45, instRole) * (1.0 - smoothstep(0.55, 0.85, instRole));
+  float primaryTuck = isPrimary * (1.0 - smoothstep(0.12, 0.48, vFeatherLocalUv.y));
+  float quillRoot = smoothstep(0.0, 0.38, vFeatherLocalUv.y);
+  float signedS = (vFeatherLocalUv.x - 0.5) * 2.0;
+  float edgeDist = abs(signedS);
+  // Directional rachis bevel + subtle barb striations so each feather blade and central quill read clearly
+  float shaftAccent = -signedS * exp(-(signedS * signedS) / 0.018) * 0.14;
+  float barbLines = sin((vFeatherLocalUv.y * 36.0 - edgeDist * 14.0) * 6.2831853) * 0.018 * smoothstep(0.08, 0.4, edgeDist);
+  float vaneBevel = 1.0 - 0.22 * smoothstep(0.52, 1.0, edgeDist);
+  float localFace = clamp(quillRoot * (1.0 - 0.68 * primaryTuck) * (1.0 - 0.22 * isSecondary), 0.0, 1.0);
+  float exposureMask = clamp(instRoot * instRowLayer * (0.18 + 0.82 * localFace) * (0.58 + 0.42 * vShade) * vaneBevel, 0.0, 1.0);
+  float featherRelief = clamp((0.68 + 0.32 * vShade) * vaneBevel + shaftAccent + barbLines, 0.42, 1.08);
+
+  // Radiant: dark charcoal-slate roots & recessed tiers -> mid slate -> warm ivory-silver main faces
+  vec3 darkRoot = vec3(0.030, 0.033, 0.042);
+  vec3 midSlate = vec3(0.21, 0.22, 0.26);
+  vec3 ivorySilver = mix(vec3(0.72, 0.70, 0.67), vec3(0.90, 0.87, 0.83), smoothstep(0.42, 0.98, luma));
+  ivorySilver = mix(ivorySilver, vec3(0.38, 0.40, 0.44), veinMask * 0.40);
+  ivorySilver *= featherRelief;
+
+  vec3 radiantWing = mix(darkRoot, midSlate, smoothstep(0.04, 0.40, exposureMask));
+  radiantWing = mix(radiantWing, ivorySilver, smoothstep(0.24, 0.95, exposureMask));
+  radiantWing = mix(radiantWing, vec3(0.92, 0.70, 0.30), goldMask * (0.42 + 0.48 * smoothstep(0.25, 0.8, exposureMask)));
+
+  // Still: cool pale silver with crisp depth separation between folded layers
+  vec3 stillRecess = vec3(0.22, 0.30, 0.39);
+  vec3 stillMid = vec3(0.48, 0.57, 0.66);
+  vec3 stillSilver = mix(vec3(0.76, 0.82, 0.88), vec3(0.90, 0.95, 0.98), smoothstep(0.44, 0.98, luma));
+  stillSilver = mix(stillSilver, vec3(0.54, 0.62, 0.72), veinMask * 0.28);
+  stillSilver *= clamp((0.70 + 0.30 * vShade) * vaneBevel + shaftAccent * 0.85 + barbLines, 0.46, 1.06);
+  vec3 stillWing = mix(stillRecess, stillMid, smoothstep(0.04, 0.40, exposureMask));
+  stillWing = mix(stillWing, stillSilver, smoothstep(0.24, 0.95, exposureMask));
+  stillWing = mix(stillWing, vec3(0.72, 0.78, 0.83), goldMask * 0.46);
+
+  vec3 formWing = mix(radiantWing, stillWing, uMarbleStill);
+  diffuseColor.rgb = mix(formWing, vec3(0.52, 0.52, 0.50) * (0.76 + 0.24 * vShade), uClay);
+  roughnessFactor = mix(0.32, 0.38, uMarbleStill);
+  roughnessFactor = mix(roughnessFactor, 0.18, goldMask * 0.68);
+  roughnessFactor = mix(roughnessFactor, 0.84, uClay);
+  metalnessFactor *= patternOn;
 }
 `;
 
 const SHADER_SSS = /* glsl */ `
 {
-  float stoneMask = 1.0 - metalnessFactor;
-  float ndv = saturate(dot(normalize(normal), normalize(vViewPosition)));
-  float rim = pow(1.0 - ndv, 2.6);
-  vec3 milk = mix(vec3(1.0, 0.93, 0.84), vec3(0.80, 0.88, 1.0), uMarbleStill);
-  totalDiffuse += milk * stoneMask * rim * 0.16;
+  float stoneMask = (1.0 - metalnessFactor * 0.75) * (1.0 - uClay);
+  vec3 viewN = normalize(normal);
+  vec3 viewV = normalize(vViewPosition);
+  float ndv = saturate(dot(viewN, viewV));
+  float baseLuma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+  float isDarkSurface = 1.0 - smoothstep(0.06, 0.32, baseLuma);
+
+  // Broad, view-coherent studio highlights along the dark glossy anatomy and swept hair ridges
+  // so torso, chest, limbs, and locks read clearly from the hero view and during orbit without washing out the dark core.
+  vec3 broadLightDir = normalize(vec3(-0.32, 0.58, 0.75));
+  vec3 broadHalf = normalize(broadLightDir + viewV);
+  float broadPrimary = pow(saturate(dot(viewN, broadHalf)), 6.5);
+  vec3 fillLightDir = normalize(vec3(0.42, 0.34, 0.84));
+  vec3 fillHalf = normalize(fillLightDir + viewV);
+  float broadSecondary = pow(saturate(dot(viewN, fillHalf)), 8.0) * 0.45;
+  float broadHighlight = broadPrimary + broadSecondary;
+  totalDiffuse += vec3(0.95, 0.90, 0.84) * broadHighlight * isDarkSurface * stoneMask * mix(0.078, 0.035, uMarbleStill);
+
+  // Controlled grazing contour rim: defines dark charcoal anatomy against the dark stage
+  // while staying restrained on pale feathers so feather edges never wash out.
+  float rimExp = mix(3.2, 2.75, isDarkSurface);
+  float rim = pow(1.0 - ndv, rimExp);
+  float rimStrength = mix(0.052, 0.138, isDarkSurface);
+  rimStrength = mix(rimStrength, 0.105, uMarbleStill);
+  vec3 rimTint = mix(vec3(0.80, 0.75, 0.68), vec3(0.76, 0.88, 0.98), uMarbleStill);
+  totalDiffuse += rimTint * stoneMask * rim * rimStrength;
+
+  // Localized gold illumination from the upright halo (center 0, 1.98, -0.44, radius ~0.90)
+  // and the two moving waist/lower trails (around y = 0.52..1.12).
+  // Kept grazing on dark obsidian anatomy so the dark core remains deep charcoal while edges and inner feathers catch warm gold.
+  vec2 haloDelta = vAngelPos.xy - vec2(0.0, mix(1.98, 1.15, uMarbleStill));
+  float haloRingDist = length(vec2(length(haloDelta) - 0.88, vAngelPos.z + 0.42));
+  float haloProx = exp(-haloRingDist * haloRingDist * 2.5);
+
+  vec2 trailDelta = vAngelPos.xz;
+  float trailRad = length(trailDelta);
+  float waistDist = length(vec2(trailRad - 0.84, (vAngelPos.y - mix(1.08, 0.16, uMarbleStill)) * 1.5));
+  float lowerDist = length(vec2(trailRad - 0.98, (vAngelPos.y - mix(0.54, 0.10, uMarbleStill)) * 1.5));
+  float trailProx = exp(-waistDist * waistDist * 2.8) + exp(-lowerDist * lowerDist * 2.8) * 0.85;
+
+  float localGold = clamp(haloProx * 0.90 + trailProx * 0.68, 0.0, 1.0) * stoneMask;
+  float localRimProfile = mix(0.065 + 0.13 * pow(1.0 - ndv, 1.8), 0.185 * pow(1.0 - ndv, 2.35), isDarkSurface);
+  vec3 localWarmTint = vec3(1.04, 0.72, 0.28) * localRimProfile;
+  vec3 localCoolTint = vec3(0.58, 0.84, 0.98) * (0.045 + 0.075 * pow(1.0 - ndv, 2.1));
+  totalDiffuse += mix(localWarmTint, localCoolTint, uMarbleStill) * localGold;
+
+  // A short gold-white envelope gathers over the existing surfaces during a
+  // form change. It is deliberately additive and low enough to preserve the
+  // dark body, pale feather edges, and vein detail outside the peak.
+  float transitionFacing = 0.32 + 0.68 * pow(1.0 - ndv, 1.45);
+  vec3 transitionTint = mix(vec3(1.06, 0.54, 0.16), vec3(1.18, 1.02, 0.80), uMarbleStill);
+  totalDiffuse += transitionTint * uMarbleTransition * transitionFacing * (0.035 + 0.065 * stoneMask);
 }
 `;
 
 const SHADER_PULSE = /* glsl */ `
 {
+  totalEmissiveRadiance *= (1.0 - max(uNeutralSpecular, uClay));
   float phase = texture2D(uMarblePhase, vEmissiveMapUv).r;
   float travel = fract(phase - uMarbleTime * 0.09);
   float band = smoothstep(0.02, 0.18, travel) * smoothstep(0.64, 0.28, travel);
   band *= 1.0 - smoothstep(0.045, 0.2, fwidth(phase));
   float breath = 0.92 + 0.08 * sin(uMarbleTime * 0.48 + phase * 6.2831853);
-  float glow = (0.84 + 0.16 * band) * breath;
-  glow *= mix(1.0, 0.07, uMarbleStill);
+  float glow = (0.82 + 0.16 * band) * breath;
+  glow *= mix(0.58, 0.05, uMarbleStill);
   float eLuma = dot(totalEmissiveRadiance, vec3(0.2126, 0.7152, 0.0722));
-  vec3 cooled = vec3(0.58, 0.66, 0.56) * eLuma;
+  vec3 cooled = vec3(0.58, 0.68, 0.74) * eLuma;
   totalEmissiveRadiance = mix(totalEmissiveRadiance, cooled, uMarbleStill) * glow;
 }
 `;
@@ -720,12 +870,19 @@ const WING_UV = /* glsl */ `
 #if defined( USE_UV ) || defined( USE_ANISOTROPY )
   vUv = uv;
 #endif
+vFeatherLocalUv = uv;
+#ifdef USE_INSTANCING_COLOR
+  vFeatherInst = instanceColor.xyz;
+#else
+  vFeatherInst = vec3(0.86, 0.84, 0.0);
+#endif
 #ifdef USE_INSTANCING
   vec3 featherPos = (instanceMatrix * vec4(position, 1.0)).xyz;
 #else
   vec3 featherPos = position;
 #endif
-vec2 featherUv = featherPos.xy * vec2(0.48, 0.48);
+vAngelPos = featherPos;
+vec2 featherUv = featherPos.xy * vec2(0.42, 0.42);
 #ifdef USE_MAP
   vMapUv = featherUv;
 #endif
@@ -748,7 +905,9 @@ function replaceChunk(source, needle, insert) {
   return source.replace(needle, insert);
 }
 
-function injectFragment(source, projectBody) {
+function injectFragment(source, role) {
+  const projectBody = role !== 'wing';
+  const formChunk = role === 'wing' ? WING_FORM : role === 'hair' ? HAIR_FORM : BODY_FORM;
   let out = replaceChunk(source, '#include <common>', `#include <common>\n${SHADER_DECL}`);
   if (projectBody) {
     out = replaceChunk(out, '#include <common>', `#include <common>\n${BODY_DECL}`);
@@ -759,7 +918,8 @@ function injectFragment(source, projectBody) {
   } else {
     out = replaceChunk(out, '#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${SHADER_PULSE}`);
   }
-  out = replaceChunk(out, '#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${projectBody ? BODY_NORMAL : ''}${SHADER_FORM}`);
+  // Omit diffuse-luminance derivative normal perturbation so veins never read as dents.
+  out = replaceChunk(out, '#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${formChunk}`);
   out = replaceChunk(
     out,
     'vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;',
@@ -803,41 +963,49 @@ function uvSpan(geometry) {
   return span;
 }
 
-function bindShader(material, uniforms, projectFeathers) {
+function bindShader(material, uniforms, role) {
+  const isWing = role === 'wing';
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uMarbleTime = uniforms.uMarbleTime;
     shader.uniforms.uMarbleStill = uniforms.uMarbleStill;
+    shader.uniforms.uMarbleTransition = uniforms.uMarbleTransition;
+    shader.uniforms.uNeutralSpecular = uniforms.uNeutralSpecular;
+    shader.uniforms.uClay = uniforms.uClay;
     shader.uniforms.uMarblePhase = uniforms.uMarblePhase;
-    if (!projectFeathers) {
+    if (!isWing) {
       shader.uniforms.uProject = uniforms.uProject;
       shader.uniforms.uMarbleMatrix = uniforms.uMarbleMatrix;
       shader.uniforms.uMarbleNormalMatrix = uniforms.uMarbleNormalMatrix;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\nvarying vec3 vMarblePos;\nvarying vec3 vMarbleNormal;\n`)
+        .replace('#include <common>', `#include <common>\nuniform mat4 uMarbleMatrix;\nvarying vec3 vMarblePos;\nvarying vec3 vMarbleNormal;\nvarying vec3 vAngelPos;\n`)
         .replace(
           '#include <begin_vertex>',
-          `#include <begin_vertex>\nvMarblePos = position;\nvMarbleNormal = normal;\n`,
+          `#include <begin_vertex>\nvMarblePos = position;\nvMarbleNormal = normal;\nvAngelPos = (uMarbleMatrix * vec4(position, 1.0)).xyz;\n`,
         );
     }
-    shader.fragmentShader = injectFragment(shader.fragmentShader, !projectFeathers);
-    if (projectFeathers) {
-      shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', WING_UV);
+    shader.fragmentShader = injectFragment(shader.fragmentShader, role);
+    if (isWing) {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\nvarying vec2 vFeatherLocalUv;\nvarying vec3 vFeatherInst;\nvarying vec3 vAngelPos;\n`)
+        .replace('#include <uv_vertex>', WING_UV);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>\nvarying vec2 vFeatherLocalUv;\nvarying vec3 vFeatherInst;\n`,
+      );
     }
   };
-  material.customProgramCacheKey = () => (projectFeathers ? 'marble-wing-v4' : 'marble-body-v4');
-  if (!projectFeathers) {
+  material.customProgramCacheKey = () => `marble-${role}-v8`;
+  if (!isWing) {
     material.onBeforeRender = (renderer, scene, camera, geometry, object) => {
       const project = uvSpan(geometry) > 0.75 ? 1 : 0;
       uniforms.uProject.value = project;
-      if (project) {
-        marbleMatrix(object, uniforms.uMarbleMatrix.value);
-        uniforms.uMarbleNormalMatrix.value.getNormalMatrix(uniforms.uMarbleMatrix.value);
-      }
+      marbleMatrix(object, uniforms.uMarbleMatrix.value);
+      uniforms.uMarbleNormalMatrix.value.getNormalMatrix(uniforms.uMarbleMatrix.value);
     };
   }
 }
 
-function applySurface(material, textures) {
+function applySurface(material, textures, role) {
   material.map = textures.map;
   material.roughnessMap = textures.roughnessMap;
   material.metalnessMap = textures.metalnessMap;
@@ -845,33 +1013,48 @@ function applySurface(material, textures) {
   material.emissiveMap = textures.emissiveMap;
   material.color.set(0xffffff);
   material.emissive.set(0xffffff);
-  material.emissiveIntensity = 2.45;
   material.roughness = 1;
   material.metalness = 1;
-  material.normalScale.set(0.92, 0.92);
-  material.clearcoat = 0.85;
-  material.clearcoatRoughness = 0.16;
-  material.envMapIntensity = 0.58;
   material.ior = 1.54;
   material.specularIntensity = 1;
-  material.sheen = 0.24;
-  material.sheenColor.set(0xfff4ea);
-  material.sheenRoughness = 0.78;
   material.dithering = true;
+
+  if (role === 'body') {
+    material.emissiveIntensity = 0.95;
+    material.normalScale.set(0.14, 0.14);
+    material.clearcoat = 0.76;
+    material.clearcoatRoughness = 0.21;
+    material.envMapIntensity = 0.44;
+    material.sheen = 0.14;
+    material.sheenColor.set(0x363c4a);
+    material.sheenRoughness = 0.48;
+  } else if (role === 'hair') {
+    material.emissiveIntensity = 0.36;
+    material.normalScale.set(0.06, 0.06);
+    material.clearcoat = 0.46;
+    material.clearcoatRoughness = 0.24;
+    material.envMapIntensity = 0.46;
+    material.sheen = 0.32;
+    material.sheenColor.set(0x5c5248);
+    material.sheenRoughness = 0.44;
+  } else {
+    material.emissiveIntensity = 1.12;
+    material.normalScale.set(0.20, 0.20);
+    material.clearcoat = 0.48;
+    material.clearcoatRoughness = 0.18;
+    material.envMapIntensity = 0.56;
+    material.sheen = 0.24;
+    material.sheenColor.set(0xfff5ea);
+    material.sheenRoughness = 0.64;
+  }
 }
 
 /**
- * Polished Carrara body and wing materials.
- *
- * setForm(form, t)
- *   form — 'radiant' or 'still'
- *   t    — eased progress toward that form, 0 → 1
- *   stillWeight = form === 'still' ? t : 1 - t
- *
- * update(time, dt) drives the vein pulse. dispose() releases the
- * shared maps and every material cloned from body.
- * Full-span UVs are projected in the figure's space so a lathe seam
- * or a pinched neck does not show. Partial UV windows keep their UVs.
+ * Video-inspired contrasting body, hair, and wing materials:
+ * - Radiant body: glossy charcoal/obsidian with restrained gold fractures
+ * - Radiant hair: related dark finish with softer highlights so locks read distinctly
+ * - Radiant wings: ivory-silver feather faces, darker charcoal-slate roots/recessed layers, fine broken gold veins
+ * - Still: shifts body to quiet ivory and wings to cool pale silver with preserved layer contrast.
  */
 export function createMarble(renderer) {
   SIZE = pickSize(renderer);
@@ -896,8 +1079,6 @@ export function createMarble(renderer) {
   textures.phaseMap.minFilter = THREE.LinearFilter;
   textures.phaseMap.magFilter = THREE.LinearFilter;
 
-  // Integer repeat so a 0–1 unwrap meets itself. The body projects in
-  // figure space instead, and ignores this repeat.
   for (const tex of Object.values(textures)) {
     tex.repeat.set(1, 1);
   }
@@ -905,6 +1086,9 @@ export function createMarble(renderer) {
   const uniforms = {
     uMarbleTime: { value: 0 },
     uMarbleStill: { value: 0 },
+    uMarbleTransition: { value: 0 },
+    uNeutralSpecular: { value: 0 },
+    uClay: { value: 0 },
     uMarblePhase: { value: textures.phaseMap },
     uProject: { value: 0 },
     uMarbleMatrix: { value: new THREE.Matrix4() },
@@ -913,23 +1097,33 @@ export function createMarble(renderer) {
 
   const warmSheen = new THREE.Color(0xfff4ea);
   const coolSheen = new THREE.Color(0xe3eef8);
+  const bodyRadiantSheen = new THREE.Color(0x363c4a);
+  const bodyStillSheen = new THREE.Color(0xdde8f4);
+  const hairRadiantSheen = new THREE.Color(0x5c5248);
+  const hairStillSheen = new THREE.Color(0xd4e2f0);
   const materials = [];
 
   const body = new THREE.MeshPhysicalMaterial();
-  applySurface(body, textures);
-  bindShader(body, uniforms, false);
+  applySurface(body, textures, 'body');
+  bindShader(body, uniforms, 'body');
+
+  const hair = new THREE.MeshPhysicalMaterial({
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -2,
+  });
+  applySurface(hair, textures, 'hair');
+  bindShader(hair, uniforms, 'hair');
 
   const wing = new THREE.MeshPhysicalMaterial({
     side: THREE.DoubleSide,
     vertexColors: true,
   });
-  applySurface(wing, textures);
-  wing.envMapIntensity = 0.42;
-  wing.clearcoat = 0.62;
-  wing.emissiveIntensity = 2.05;
-  bindShader(wing, uniforms, true);
+  applySurface(wing, textures, 'wing');
+  bindShader(wing, uniforms, 'wing');
 
-  materials.push(body, wing);
+  materials.push(body, hair, wing);
 
   const protoClone = THREE.MeshPhysicalMaterial.prototype.clone;
   body.clone = function cloneMarbleBody() {
@@ -962,16 +1156,34 @@ export function createMarble(renderer) {
 
   function applyStill(still) {
     uniforms.uMarbleStill.value = still;
-    for (const material of materials) {
-      material.sheenColor.copy(warmSheen).lerp(coolSheen, still);
-      material.clearcoatRoughness = 0.055 + still * 0.1;
+    for (const mat of materials) {
+      if (mat === wing || mat === hair) continue;
+      if (mat.userData?.isJoint) {
+        mat.clearcoat = THREE.MathUtils.lerp(0.24, 0.20, still);
+        mat.clearcoatRoughness = THREE.MathUtils.lerp(0.44, 0.46, still);
+        mat.envMapIntensity = THREE.MathUtils.lerp(0.32, 0.48, still);
+      } else {
+        mat.clearcoat = THREE.MathUtils.lerp(0.76, 0.52, still);
+        mat.clearcoatRoughness = THREE.MathUtils.lerp(0.23, 0.25, still);
+        mat.envMapIntensity = THREE.MathUtils.lerp(0.44, 0.62, still);
+      }
+      mat.sheen = THREE.MathUtils.lerp(0.14, 0.24, still);
+      mat.sheenColor.copy(bodyRadiantSheen).lerp(bodyStillSheen, still);
     }
+    hair.clearcoat = THREE.MathUtils.lerp(0.46, 0.34, still);
+    hair.envMapIntensity = THREE.MathUtils.lerp(0.46, 0.58, still);
+    hair.sheen = THREE.MathUtils.lerp(0.32, 0.26, still);
+    hair.sheenColor.copy(hairRadiantSheen).lerp(hairStillSheen, still);
+    wing.sheenColor.copy(warmSheen).lerp(coolSheen, still);
+    wing.clearcoatRoughness = THREE.MathUtils.lerp(0.18, 0.22, still);
   }
 
   return {
     body,
+    hair,
     wing,
     textures,
+    uniforms,
     update(time = 0) {
       if (Number.isFinite(time)) uniforms.uMarbleTime.value = time;
     },
@@ -979,6 +1191,28 @@ export function createMarble(renderer) {
       const k = Number.isFinite(Number(t)) ? Math.min(1, Math.max(0, Number(t))) : 1;
       if (form === 'still') applyStill(k);
       else if (form === 'radiant') applyStill(1 - k);
+    },
+    setTransition(signal) {
+      const value = Number(signal?.envelope);
+      uniforms.uMarbleTransition.value = Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0;
+    },
+    setNeutralSpecular(enabled) {
+      const v = enabled ? 1 : 0;
+      uniforms.uNeutralSpecular.value = v;
+      for (const material of materials) {
+        material.normalScale.setScalar(enabled ? 0 : material === hair ? 0.06 : material === body ? 0.14 : 0.20);
+      }
+    },
+    setClay(enabled) {
+      const v = enabled ? 1 : 0;
+      uniforms.uClay.value = v;
+      for (const material of materials) {
+        if (enabled) {
+          material.clearcoat = 0;
+          material.sheen = 0;
+          material.normalScale.set(0, 0);
+        }
+      }
     },
     dispose,
     size: SIZE,

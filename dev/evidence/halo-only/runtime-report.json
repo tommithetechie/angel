@@ -1,0 +1,476 @@
+{
+  "baseline": {
+    "state": {
+      "href": "http://127.0.0.1:5175/angel/?review=1&time=3.2",
+      "inner": [
+        1440,
+        900
+      ],
+      "title": "Halo",
+      "body": "HALO\n\nHERO",
+      "debug": {
+        "camera": [
+          0.040000000000000015,
+          1.6910819406419473,
+          6.669867196931236
+        ],
+        "target": [
+          0,
+          1.6710819406419468,
+          -0.020000000000000018
+        ],
+        "sceneChildren": [
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "moon",
+            "visible": true
+          },
+          {
+            "name": "rings",
+            "visible": true
+          },
+          {
+            "name": "particles",
+            "visible": true
+          },
+          {
+            "name": "debris",
+            "visible": true
+          },
+          {
+            "name": "floor",
+            "visible": true
+          }
+        ],
+        "ringChildren": [
+          "halo",
+          "trail-waist",
+          "trail-lower"
+        ],
+        "reducedMotion": false
+      },
+      "canvas": [
+        [
+          1440,
+          900
+        ]
+      ],
+      "reduced": false
+    },
+    "shot": {
+      "path": "dev/evidence/halo-only/runtime-baseline-1440x900.png",
+      "bytes": 1549903
+    }
+  },
+  "orbit": {
+    "state": {
+      "href": "http://127.0.0.1:5175/angel/?review=1&time=3.2",
+      "inner": [
+        1440,
+        900
+      ],
+      "title": "Halo",
+      "body": "HALO\n\nHERO",
+      "debug": {
+        "camera": [
+          -5.314076727740916,
+          2.0685743089653092,
+          4.024615119066786
+        ],
+        "target": [
+          0,
+          1.6710819406419468,
+          -0.020000000000000018
+        ],
+        "sceneChildren": [
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "moon",
+            "visible": true
+          },
+          {
+            "name": "rings",
+            "visible": true
+          },
+          {
+            "name": "particles",
+            "visible": true
+          },
+          {
+            "name": "debris",
+            "visible": true
+          },
+          {
+            "name": "floor",
+            "visible": true
+          }
+        ],
+        "ringChildren": [
+          "halo",
+          "trail-waist",
+          "trail-lower"
+        ],
+        "reducedMotion": false
+      },
+      "canvas": [
+        [
+          1440,
+          900
+        ]
+      ],
+      "reduced": false
+    },
+    "shot": {
+      "path": "dev/evidence/halo-only/runtime-orbit-1440x900.png",
+      "bytes": 1578709
+    }
+  },
+  "heroReset": {
+    "state": {
+      "href": "http://127.0.0.1:5175/angel/?review=1&time=3.2",
+      "inner": [
+        1440,
+        900
+      ],
+      "title": "Halo",
+      "body": "HALO\n\nHERO",
+      "debug": {
+        "camera": [
+          0.03874998658140977,
+          1.6912176291502787,
+          6.669874147184286
+        ],
+        "target": [
+          0,
+          1.6710819406419468,
+          -0.020000000000000018
+        ],
+        "sceneChildren": [
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "moon",
+            "visible": true
+          },
+          {
+            "name": "rings",
+            "visible": true
+          },
+          {
+            "name": "particles",
+            "visible": true
+          },
+          {
+            "name": "debris",
+            "visible": true
+          },
+          {
+            "name": "floor",
+            "visible": true
+          }
+        ],
+        "ringChildren": [
+          "halo",
+          "trail-waist",
+          "trail-lower"
+        ],
+        "reducedMotion": false
+      },
+      "canvas": [
+        [
+          1440,
+          900
+        ]
+      ],
+      "reduced": false
+    },
+    "shot": {
+      "path": "dev/evidence/halo-only/runtime-hero-reset-1440x900.png",
+      "bytes": 1549860
+    }
+  },
+  "resizePhone": {
+    "state": {
+      "href": "http://127.0.0.1:5175/angel/?review=1&time=3.2",
+      "inner": [
+        390,
+        844
+      ],
+      "title": "Halo",
+      "body": "HALO\n\nHERO",
+      "debug": {
+        "camera": [
+          0.03999988183790891,
+          1.6910819534683452,
+          7.976824420892413
+        ],
+        "target": [
+          0,
+          1.6710819406419468,
+          -0.020000000000000018
+        ],
+        "sceneChildren": [
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "moon",
+            "visible": true
+          },
+          {
+            "name": "rings",
+            "visible": true
+          },
+          {
+            "name": "particles",
+            "visible": true
+          },
+          {
+            "name": "debris",
+            "visible": true
+          },
+          {
+            "name": "floor",
+            "visible": true
+          }
+        ],
+        "ringChildren": [
+          "halo",
+          "trail-waist",
+          "trail-lower"
+        ],
+        "reducedMotion": false
+      },
+      "canvas": [
+        [
+          390,
+          844
+        ]
+      ],
+      "reduced": false
+    },
+    "shot": {
+      "path": "dev/evidence/halo-only/runtime-resize-phone-390x844.png",
+      "bytes": 360354
+    }
+  },
+  "reducedMotion": {
+    "state": {
+      "href": "http://127.0.0.1:5175/angel/?review=1&time=3.2",
+      "inner": [
+        390,
+        844
+      ],
+      "title": "Halo",
+      "body": "HALO\n\nHERO",
+      "debug": {
+        "camera": [
+          0.03999999999999941,
+          1.6910819406419475,
+          7.976824420333482
+        ],
+        "target": [
+          0,
+          1.6710819406419468,
+          -0.020000000000000018
+        ],
+        "sceneChildren": [
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "moon",
+            "visible": true
+          },
+          {
+            "name": "rings",
+            "visible": true
+          },
+          {
+            "name": "particles",
+            "visible": true
+          },
+          {
+            "name": "debris",
+            "visible": true
+          },
+          {
+            "name": "floor",
+            "visible": true
+          }
+        ],
+        "ringChildren": [
+          "halo",
+          "trail-waist",
+          "trail-lower"
+        ],
+        "reducedMotion": true
+      },
+      "canvas": [
+        [
+          390,
+          844
+        ]
+      ],
+      "reduced": true
+    },
+    "shot": {
+      "path": "dev/evidence/halo-only/runtime-reduced-motion-390x844.png",
+      "bytes": 338334
+    }
+  },
+  "health": {
+    "consoleEvents": [],
+    "failedRequests": []
+  }
+}

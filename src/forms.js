@@ -14,29 +14,31 @@ import * as THREE from 'three';
  * Modules should look correct if setForm is never called (radiant).
  */
 
-const FULL_SECONDS = 2.7;
+// The reference transformation reads as a short staged reveal rather than a
+// snap; keep the full path inside the planned three-to-four-second window.
+const FULL_SECONDS = 3.2;
 
 const RADIANT = {
-  background: new THREE.Color(0x040308),
-  fog: new THREE.Color(0x09080d),
-  fogDensity: 0.012,
-  exposure: 0.74,
-  envIntensity: 0.78,
-  bloomStrength: 0.34,
-  bloomThreshold: 1.62,
-  bloomRadius: 0.58,
+  background: new THREE.Color(0x090808),
+  fog: new THREE.Color(0x151210),
+  fogDensity: 0.014,
+  exposure: 0.76,
+  envIntensity: 0.56,
+  bloomStrength: 0.26,
+  bloomThreshold: 1.56,
+  bloomRadius: 0.46,
   bloomTint: new THREE.Color(0xffd7a2),
 };
 
 const STILL = {
-  background: new THREE.Color(0x07141c),
-  fog: new THREE.Color(0x1a5560),
-  fogDensity: 0.024,
-  exposure: 0.78,
-  envIntensity: 0.55,
-  bloomStrength: 0.32,
-  bloomThreshold: 1.18,
-  bloomRadius: 0.7,
+  background: new THREE.Color(0x091920),
+  fog: new THREE.Color(0x15313b),
+  fogDensity: 0.020,
+  exposure: 0.79,
+  envIntensity: 0.50,
+  bloomStrength: 0.22,
+  bloomThreshold: 1.38,
+  bloomRadius: 0.48,
   bloomTint: new THREE.Color(0xd5e8ff),
 };
 
@@ -45,6 +47,8 @@ function lerp(a, b, t) {
 }
 
 const formBroken = new WeakSet();
+
+const transitionBroken = new WeakSet();
 
 function callSetForm(target, form, t) {
   if (!target || formBroken.has(target) || typeof target.setForm !== 'function') return;
@@ -56,9 +60,25 @@ function callSetForm(target, form, t) {
   }
 }
 
+function callSetTransition(target, signal) {
+  if (!target || transitionBroken.has(target) || typeof target.setTransition !== 'function') return;
+  try {
+    target.setTransition(signal);
+  } catch (error) {
+    transitionBroken.add(target);
+    console.error(error);
+  }
+}
+
 function smoothstep(t) {
   const x = THREE.MathUtils.clamp(t, 0, 1);
   return x * x * (3 - 2 * x);
+}
+
+function smoothstepRange(edge0, edge1, t) {
+  const span = edge1 - edge0;
+  const normalized = span === 0 ? (t < edge0 ? 0 : 1) : (t - edge0) / span;
+  return smoothstep(normalized);
 }
 
 /**
@@ -100,6 +120,20 @@ export function createForms({
   let elapsed = 0;
   let duration = FULL_SECONDS;
   let animating = false;
+  let previewTransition = false;
+  let previewDirection = 1;
+
+  // One shared, reversible light envelope. `progress` is always the actual
+  // Still weight, so a reversal never jumps back to a hidden timer phase.
+  const transition = {
+    active: false,
+    progress: 0,
+    direction: 0,
+    phase: 0,
+    envelope: 0,
+    gather: 0,
+    reducedMotion: Boolean(reducedMotion),
+  };
 
   const scratch = new THREE.Color();
 
@@ -111,19 +145,41 @@ export function createForms({
     return form === 'still' ? weight : 1 - weight;
   }
 
+  function updateTransition(weight) {
+    const path = THREE.MathUtils.clamp(weight, 0, 1);
+    const direction = animating ? Math.sign(to - from) : previewTransition ? previewDirection : 0;
+    const active = !reducedMotion && direction !== 0 && (animating || previewTransition);
+    // A single bell across the full form path. Keeping this tied to the live
+    // weight makes it continuous when Space/button is pressed mid-transition.
+    const midpoint = Math.sin(Math.PI * path);
+    transition.active = active;
+    transition.progress = path;
+    transition.direction = direction;
+    transition.phase = active ? (direction > 0 ? path : 1 - path) : 0;
+    transition.envelope = active ? Math.pow(Math.max(0, midpoint), 1.15) : 0;
+    // A symmetric, weight-derived gather starts before the broad midpoint
+    // flare and fades toward either settled form. It intentionally avoids
+    // direction-specific phase so a reversal cannot pop the trail width.
+    transition.gather = active
+      ? smoothstepRange(0.08, 0.42, midpoint) * (1 - smoothstepRange(0.42, 0.82, midpoint))
+      : 0;
+  }
+
   function apply(weight) {
     const form = desired;
     const t = progressToward(form, weight);
+    updateTransition(weight);
 
     scene.background.copy(RADIANT.background).lerp(STILL.background, weight);
     scene.fog.color.copy(RADIANT.fog).lerp(STILL.fog, weight);
     scene.fog.density = lerp(RADIANT.fogDensity, STILL.fogDensity, weight);
     scene.environmentIntensity = lerp(RADIANT.envIntensity, STILL.envIntensity, weight);
-    renderer.toneMappingExposure = lerp(RADIANT.exposure, STILL.exposure, weight);
+    renderer.toneMappingExposure =
+      lerp(RADIANT.exposure, STILL.exposure, weight) + transition.envelope * 0.035;
     renderer.setClearColor(scene.background, 1);
 
-    bloom.strength = lerp(RADIANT.bloomStrength, STILL.bloomStrength, weight);
-    bloom.threshold = lerp(RADIANT.bloomThreshold, STILL.bloomThreshold, weight);
+    bloom.strength = lerp(RADIANT.bloomStrength, STILL.bloomStrength, weight) + transition.envelope * 0.14;
+    bloom.threshold = lerp(RADIANT.bloomThreshold, STILL.bloomThreshold, weight) - transition.envelope * 0.12;
     bloom.radius = lerp(RADIANT.bloomRadius, STILL.bloomRadius, weight);
     scratch.copy(RADIANT.bloomTint).lerp(STILL.bloomTint, weight);
     for (const tint of bloom.bloomTintColors) {
@@ -147,12 +203,18 @@ export function createForms({
     moon.visible = weight > 0.001;
 
     if (grade) grade.uniforms.uStill.value = weight;
+    if (grade?.uniforms?.uTransition) grade.uniforms.uTransition.value = transition.envelope;
     // Floor, marble, and scene modules all share this contract.
     // Marble's setForm lands in #3; until then the method is absent.
     // Angel, rings, and particles may gain setForm in later PRs.
     callSetForm(floor, form, t);
     callSetForm(marble, form, t);
-    for (const mod of modules) callSetForm(mod, form, t);
+    for (const mod of modules) {
+      callSetForm(mod, form, t);
+      callSetTransition(mod, transition);
+    }
+    callSetTransition(floor, transition);
+    callSetTransition(marble, transition);
 
     document.documentElement.style.setProperty('--still', weight.toFixed(4));
     document.body.style.backgroundColor = `#${scene.background.getHexString()}`;
@@ -166,6 +228,7 @@ export function createForms({
 
   function begin(immediate) {
     const next = desired === 'still' ? 1 : 0;
+    previewTransition = false;
     if (immediate || reducedMotion) {
       still = next;
       animating = false;
@@ -197,6 +260,18 @@ export function createForms({
     },
     get still() {
       return still;
+    },
+    get animating() {
+      return animating;
+    },
+    setBlend(weight, options = {}) {
+      const next = THREE.MathUtils.clamp(Number(weight), 0, 1);
+      if (!Number.isFinite(next)) return;
+      still = next;
+      animating = false;
+      previewTransition = Boolean(options.transition) && !reducedMotion;
+      previewDirection = options.direction === -1 ? -1 : 1;
+      apply(still);
     },
     toggle() {
       goTo(desired === 'radiant' ? 'still' : 'radiant');

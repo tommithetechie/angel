@@ -6,17 +6,14 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { createMarble } from './marble.js';
-import { createAngel } from './angel.js';
 import { createRings } from './rings.js';
 import { createParticles } from './particles.js';
 import { createFloor } from './floor.js';
-import { createDebrisModule, createForms } from './forms.js';
+import { createDebris } from './debris.js';
 
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const params = new URLSearchParams(window.location.search);
-const settle = params.has('settle') || reducedMotion;
-
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const review = parseReview(params);
 const quality = detectQuality();
 
 const renderer = new THREE.WebGLRenderer({
@@ -26,22 +23,29 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x040308, 1);
+renderer.setClearColor(0x070504, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.74;
+renderer.toneMappingExposure = 0.84;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.domElement.setAttribute('aria-label', 'Seraphim, a marble figure in a dark reflective space');
+renderer.domElement.setAttribute('aria-label', 'Animated gold halo and two orbital light trails');
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x040308);
-scene.fog = new THREE.FogExp2(0x09080d, 0.012);
+scene.background = new THREE.Color(0x070504);
+scene.fog = new THREE.FogExp2(0x0e171a, 0.012);
 
-const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.12, 140);
-const lookAt = new THREE.Vector3(0.03, 1.52, 0);
-const introFrom = new THREE.Vector3(0.55, 1.82, 15.2);
-const introTo = new THREE.Vector3(0.12, 1.26, 9.35);
-camera.position.copy(settle ? introTo : introFrom);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const room = new RoomEnvironment();
+const envTarget = pmrem.fromScene(room, 0.04);
+scene.environment = envTarget.texture;
+scene.environmentIntensity = 0.5;
+pmrem.dispose();
+room.dispose();
+
+const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.08, 80);
+const lookAt = new THREE.Vector3(0, 1.14, 0);
+const heroAnchorPosition = new THREE.Vector3();
+const heroAnchorTarget = new THREE.Vector3();
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.copy(lookAt);
@@ -49,27 +53,13 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.rotateSpeed = 0.55;
 controls.zoomSpeed = 0.65;
-controls.enablePan = true;
+controls.enablePan = false;
 controls.screenSpacePanning = false;
-controls.minDistance = 3.6;
-controls.maxDistance = 18;
-controls.minPolarAngle = 0.42;
-controls.maxPolarAngle = Math.PI * 0.58;
-controls.autoRotateSpeed = 0.38;
-controls.update();
-
-const pmrem = new THREE.PMREMGenerator(renderer);
-const room = new RoomEnvironment();
-// Keep the target. fromScene's color texture is scene.environment; dropping
-// the target would orphan its depth buffer without a dispose().
-// 0.04 is the largest blur that stays inside PMREMGenerator's 20-sample cap
-// at the 256px cube. A wider sigma logs a clip warning and then clamps.
-const envTarget = pmrem.fromScene(room, 0.04);
-scene.environment = envTarget.texture;
-scene.userData.environmentTarget = envTarget;
-scene.environmentIntensity = 0.78;
-pmrem.dispose();
-room.dispose();
+controls.minDistance = 2.6;
+controls.maxDistance = 16;
+controls.minPolarAngle = 0.32;
+controls.maxPolarAngle = Math.PI * 0.68;
+controls.autoRotate = false;
 
 const lights = createLights();
 scene.add(
@@ -77,32 +67,35 @@ scene.add(
   lights.key,
   lights.rim,
   lights.fill,
-  lights.warmA,
-  lights.warmB,
+  lights.warm,
   lights.moonDir,
   lights.moonDir.target,
   lights.moonFill,
 );
-
 const moon = createMoon();
 scene.add(moon);
 lights.moonDir.position.copy(moon.position);
 
-const marble = createMarble(renderer);
-const angel = createAngel(marble);
 const rings = createRings();
-const particles = createParticles(marble);
-const debris = createDebrisModule(marble);
-const modules = [angel, rings, particles];
-scene.add(angel.group, rings.group, particles.group);
-if (debris?.group) {
-  scene.add(debris.group);
-  modules.push(debris);
+const particles = createParticles();
+const debris = createDebris();
+const floor = createFloor(scene, quality);
+const modules = [rings, particles, debris, floor];
+scene.add(rings.group);
+scene.add(particles.group, debris.group, floor.group);
+
+function placeMoon() {
+  const portrait = window.innerWidth / Math.max(window.innerHeight, 1) < 0.82;
+  moon.position.set(
+    portrait ? 1.65 : 2.85,
+    portrait ? 4.08 : 3.25,
+    portrait ? -5.25 : -6.2,
+  );
+  lights.moonDir.position.copy(moon.position);
+  floor.setMoonDirection(moon.position);
 }
 
-const floor = createFloor(scene, quality);
-floor.setMoonDirection(moon.position);
-scene.add(floor.group);
+placeMoon();
 
 const composer = new EffectComposer(renderer);
 const composerSamples = quality.low ? 0 : 2;
@@ -111,152 +104,131 @@ composer.renderTarget2.samples = composerSamples;
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.34,
-  0.58,
-  1.62,
+  quality.low ? 0.34 : 0.42,
+  0.44,
+  1.18,
 );
-bloom.highPassUniforms.smoothWidth.value = 0.42;
+bloom.highPassUniforms.smoothWidth.value = 0.24;
 composer.addPass(bloom);
 const grade = new ShaderPass(createGradeShader(quality));
 composer.addPass(grade);
 
 const hud = createHud();
-
-const forms = createForms({
-  scene,
-  renderer,
-  bloom,
-  floor,
-  lights,
-  moon,
-  marble,
-  modules,
-  grade,
-  reducedMotion,
-  onChange: hud.setForm,
-});
-
-if (params.get('form') === 'still') forms.goTo('still', settle);
-else if (settle) forms.goTo('radiant', true);
-
-let introActive = !settle;
-let introElapsed = 0;
-const introSeconds = 6.6;
+applyReviewToggles();
+let sceneOwnsCamera = true;
+let heroFrameDirty = true;
+let heroFrameReady = false;
 let interacting = false;
+let heroFrameAnimating = false;
 let idleFor = 0;
+let resizeLock = false;
+let composerSized = false;
 
 controls.addEventListener('start', () => {
   interacting = true;
-  introActive = false;
-  controls.autoRotate = false;
+  sceneOwnsCamera = false;
+  heroFrameAnimating = false;
 });
 controls.addEventListener('end', () => {
   interacting = false;
   idleFor = 0;
 });
 
-window.addEventListener('keydown', (event) => {
-  if (event.code !== 'Space' || event.repeat) return;
-  if (event.target === hud.button) return;
-  event.preventDefault();
-  forms.toggle();
-});
-hud.button.addEventListener('click', () => forms.toggle());
+const pointerRaycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+const pointerFloorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.96);
+const pointerHit = new THREE.Vector3();
+let lastPointerRippleMs = 0;
 
-let resizeLock = false;
-let composerSized = false;
+function spawnPointerRipple(event, strength) {
+  if (typeof floor.addRipple !== 'function') return;
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  if (width < 2 || height < 2) return;
+  pointerNdc.set((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
+  pointerRaycaster.setFromCamera(pointerNdc, camera);
+  pointerFloorPlane.constant = -floor.getFloorY();
+  if (pointerRaycaster.ray.intersectPlane(pointerFloorPlane, pointerHit) && pointerHit.lengthSq() < 42) {
+    floor.addRipple(pointerHit.x, pointerHit.z, strength);
+  }
+}
+
+function onPointerDown(event) {
+  if (event.target !== renderer.domElement) return;
+  lastPointerRippleMs = performance.now();
+  spawnPointerRipple(event, 0.92);
+}
+
+function onPointerMove(event) {
+  if (interacting || event.target !== renderer.domElement) return;
+  const now = performance.now();
+  if (now - lastPointerRippleMs < 120) return;
+  lastPointerRippleMs = now;
+  spawnPointerRipple(event, 0.58);
+}
+
+renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive: true });
+renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: true });
+
+hud.resetButton.addEventListener('click', returnToHero);
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyR' || event.repeat) return;
+  if (event.target === hud.resetButton) return;
+  event.preventDefault();
+  returnToHero();
+});
+
 window.addEventListener('resize', resize);
 if (typeof ResizeObserver === 'function') {
   const viewport = new ResizeObserver(() => resize());
   viewport.observe(document.documentElement);
 }
+
 resize();
+applyHeroFrame(true);
 
 const clock = new THREE.Clock();
 clock.getDelta();
-const stepped = new WeakSet();
-let marbleBroken = false;
 let frameId = 0;
 let released = false;
 
 function frame() {
   if (released) return;
   const dt = Math.min(clock.getDelta(), 0.05);
-  const time = clock.elapsedTime;
-
-  if (introActive) {
-    introElapsed += dt;
-    const p = Math.min(1, introElapsed / introSeconds);
-    const eased = 1 - (1 - p) ** 3;
-    camera.position.lerpVectors(introFrom, introTo, eased);
-    controls.target.copy(lookAt);
-    if (p >= 1) introActive = false;
-  }
+  const time = review.enabled
+    ? review.time
+    : reducedMotion
+      ? clock.elapsedTime * 0.12
+      : clock.elapsedTime;
 
   if (!interacting) idleFor += dt;
-  controls.autoRotate = !introActive && !interacting && idleFor > 1.4;
-
   controls.update();
-  moon.lookAt(camera.position);
 
-  forms.update(dt);
-  floor.update(time);
-  // Marble's pulse is update(time). #3 adds it; older marble.js has no such method.
-  if (!marbleBroken && typeof marble.update === 'function') {
-    try {
-      marble.update(time);
-    } catch (error) {
-      marbleBroken = true;
-      console.error(error);
+  if (heroFrameDirty && sceneOwnsCamera && !interacting) applyHeroFrame(true);
+  if (heroFrameAnimating && sceneOwnsCamera && !interacting) {
+    const positionStep = Math.min(1, dt * 3.2);
+    const targetStep = Math.min(1, dt * 3.8);
+    camera.position.lerp(heroAnchorPosition, positionStep);
+    controls.target.lerp(heroAnchorTarget, targetStep);
+    if (
+      camera.position.distanceToSquared(heroAnchorPosition) < 1e-5 &&
+      controls.target.distanceToSquared(heroAnchorTarget) < 1e-5
+    ) {
+      camera.position.copy(heroAnchorPosition);
+      controls.target.copy(heroAnchorTarget);
+      heroFrameAnimating = false;
     }
   }
-  for (const mod of modules) stepModule(mod, time, dt);
+  applyHeroDrift(dt);
+  moon.lookAt(camera.position);
+  rings.update(time, dt);
+  particles.update(time, dt);
+  debris.update(time, dt);
+  floor.update(time, dt);
   grade.uniforms.uTime.value = time;
 
   composer.render();
   frameId = requestAnimationFrame(frame);
-}
-
-function release() {
-  if (released) return;
-  released = true;
-  cancelAnimationFrame(frameId);
-  for (const mod of modules) callDispose(mod);
-  callDispose(floor);
-  callDispose(marble);
-  composer.dispose();
-  controls.dispose();
-  envTarget.dispose();
-  moon.geometry.dispose();
-  moon.material.dispose();
-  renderer.dispose();
-  renderer.domElement.remove();
-}
-
-function callDispose(target) {
-  if (!target || typeof target.dispose !== 'function') return;
-  try {
-    target.dispose();
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-window.addEventListener('pagehide', (event) => {
-  if (event.persisted) return;
-  release();
-});
-
-frame();
-
-function stepModule(mod, time, dt) {
-  if (!mod || typeof mod.update !== 'function' || stepped.has(mod)) return;
-  try {
-    mod.update(time, dt);
-  } catch (error) {
-    stepped.add(mod);
-    console.error(error);
-  }
 }
 
 function resize() {
@@ -265,40 +237,37 @@ function resize() {
   const height = window.innerHeight;
   if (width < 2 || height < 2) return;
   const next = detectQuality();
-  const pixelRatio = next.pixelRatio;
-  const bufferW = Math.floor(width * pixelRatio);
-  const bufferH = Math.floor(height * pixelRatio);
-  const sameBuffer =
-    renderer.domElement.width === bufferW && renderer.domElement.height === bufferH;
+  const bufferW = Math.floor(width * next.pixelRatio);
+  const bufferH = Math.floor(height * next.pixelRatio);
+  const sameBuffer = renderer.domElement.width === bufferW && renderer.domElement.height === bufferH;
   const sameGrade =
-    grade.uniforms.uChroma.value === next.chroma &&
     grade.uniforms.uGrain.value === next.grain &&
-    grade.uniforms.uVignette.value === next.vignette;
-  if (sameBuffer && sameGrade && composerSized) {
-    quality.low = next.low;
-    quality.pixelRatio = pixelRatio;
-    return;
-  }
-
-  resizeLock = true;
+    grade.uniforms.uVignette.value === next.vignette &&
+    grade.uniforms.uChroma.value === next.chroma;
   quality.low = next.low;
-  quality.pixelRatio = pixelRatio;
-  quality.chroma = next.chroma;
+  quality.pixelRatio = next.pixelRatio;
   quality.grain = next.grain;
   quality.vignette = next.vignette;
-  grade.uniforms.uChroma.value = next.chroma;
+  quality.chroma = next.chroma;
+  if (sameBuffer && sameGrade && composerSized) return;
+
+  resizeLock = true;
   grade.uniforms.uGrain.value = next.grain;
   grade.uniforms.uVignette.value = next.vignette;
+  grade.uniforms.uChroma.value = next.chroma;
   if (!sameBuffer) {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setPixelRatio(pixelRatio);
+    renderer.setPixelRatio(next.pixelRatio);
     renderer.setSize(width, height);
-    composer.setPixelRatio(pixelRatio);
+    composer.setPixelRatio(next.pixelRatio);
     composer.setSize(width, height);
   }
+  placeMoon();
   composerSized = true;
   resizeLock = false;
+  heroFrameDirty = true;
+  if (heroFrameReady && sceneOwnsCamera && !interacting) applyHeroFrame(true);
 }
 
 function detectQuality() {
@@ -312,51 +281,138 @@ function detectQuality() {
       ? Math.min(window.devicePixelRatio || 1, 1.15)
       : Math.min(window.devicePixelRatio || 1, 1.6),
     chroma: low ? 0 : 0.0011,
-    grain: low ? 0.008 : 0.014,
-    vignette: low ? 0.16 : 0.22,
+    grain: low ? 0.004 : 0.008,
+    vignette: low ? 0.12 : 0.18,
   };
 }
 
-function tagLight(light, color0, intensity0, color1, intensity1) {
-  light.userData.color0 = new THREE.Color(color0);
-  light.userData.color1 = new THREE.Color(color1);
-  light.userData.i0 = intensity0;
-  light.userData.i1 = intensity1;
-  return light;
+function parseReview(search) {
+  const enabled = search.has('review') && search.get('review') !== '0';
+  const readNumber = (name) => {
+    const raw = search.get(name);
+    if (raw === null || raw.trim() === '') return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  };
+  return {
+    enabled,
+    time: Math.max(0, readNumber('time') ?? readNumber('t') ?? 0),
+    showRings: search.get('rings') !== '0',
+    showAtmosphere: search.get('atmosphere') !== '0',
+  };
 }
 
+function applyReviewToggles() {
+  if (!review.enabled) return;
+  if (!review.showRings) rings.group.visible = false;
+  if (!review.showAtmosphere) {
+    particles.group.visible = false;
+    debris.group.visible = false;
+    floor.group.visible = false;
+    moon.visible = false;
+  }
+}
+
+function callDispose(target) {
+  if (!target || typeof target.dispose !== 'function') return;
+  try {
+    target.dispose();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function applyHeroFrame(snap = false) {
+  rings.update(review.enabled ? review.time : 0, 0);
+  rings.group.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(rings.group);
+  if (bounds.isEmpty()) return;
+
+  const size = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+  const safeHalfWidth = Math.max(size.x * 0.5, 0.1) * 1.12;
+  const safeHalfHeight = Math.max(size.y * 0.5, 0.1) * 1.1;
+  const aspect = Math.max(camera.aspect, 0.1);
+  const portrait = THREE.MathUtils.clamp((1.35 - aspect) / 0.9, 0, 1);
+  camera.fov = THREE.MathUtils.lerp(32, 44, portrait);
+  camera.updateProjectionMatrix();
+  const verticalHalfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+  const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * aspect);
+  const distance = Math.max(
+    safeHalfHeight / Math.tan(verticalHalfFov),
+    safeHalfWidth / Math.tan(horizontalHalfFov),
+  ) + Math.max(0.24, size.z * 0.5 + 0.08);
+  const target = center.clone();
+  target.y += 0.02;
+  const position = target.clone().add(new THREE.Vector3(0.04, 0.02, distance));
+
+  heroAnchorPosition.copy(position);
+  heroAnchorTarget.copy(target);
+  heroFrameReady = true;
+  heroFrameDirty = false;
+  if (!snap) return;
+  heroFrameAnimating = false;
+  camera.position.copy(position);
+  controls.target.copy(target);
+  controls.update();
+}
+
+function applyHeroDrift(dt) {
+  if (reducedMotion || review.enabled || !sceneOwnsCamera || interacting || !heroFrameReady || heroFrameAnimating || idleFor < 2.2) return;
+  const phase = (idleFor - 2.2) * 0.12;
+  const angle = Math.sin(phase) * 0.012;
+  const desired = heroAnchorPosition.clone().sub(heroAnchorTarget);
+  desired.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(heroAnchorTarget);
+  camera.position.lerp(desired, Math.min(1, dt * 0.45));
+  controls.target.lerp(heroAnchorTarget, Math.min(1, dt * 0.6));
+}
+
+function returnToHero() {
+  sceneOwnsCamera = true;
+  interacting = false;
+  idleFor = 0;
+  heroFrameDirty = true;
+  applyHeroFrame(true);
+}
+
+function release() {
+  if (released) return;
+  released = true;
+  cancelAnimationFrame(frameId);
+  renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+  renderer.domElement.removeEventListener('pointermove', onPointerMove);
+  for (const module of modules) callDispose(module);
+  composer.dispose();
+  controls.dispose();
+  envTarget.dispose();
+  moon.geometry.dispose();
+  moon.material.dispose();
+  renderer.dispose();
+  renderer.domElement.remove();
+}
+
+window.addEventListener('pagehide', (event) => {
+  if (!event.persisted) release();
+});
+
+frame();
+
 function createLights() {
-  const hemi = new THREE.HemisphereLight(0x1a1c24, 0x070605, 0.22);
-  hemi.userData.sky0 = new THREE.Color(0x1a1c24);
-  hemi.userData.sky1 = new THREE.Color(0x1c4650);
-  hemi.userData.ground0 = new THREE.Color(0x070605);
-  hemi.userData.ground1 = new THREE.Color(0x062028);
-  hemi.userData.i0 = 0.22;
-  hemi.userData.i1 = 0.48;
-
-  const key = tagLight(new THREE.DirectionalLight(0xfff4ea, 1.22), 0xfff4ea, 1.22, 0xd5e4ea, 0.62);
-  key.position.set(-2.1, 4.4, 5.4);
-
-  const rim = tagLight(new THREE.DirectionalLight(0xd5e2ff, 0.92), 0xd5e2ff, 0.92, 0x8eb8c4, 0.32);
-  rim.position.set(3.4, 3.6, -3.8);
-
-  const fill = tagLight(new THREE.DirectionalLight(0x9aafc8, 0.28), 0x9aafc8, 0.28, 0x7f9aa6, 0.42);
-  fill.position.set(0.8, 1.3, 5.2);
-
-  const warmA = tagLight(new THREE.PointLight(0xffc56a, 2.55, 7.2, 2), 0xffc56a, 2.55, 0xffc56a, 0.28);
-  warmA.position.set(1.25, 1.72, 1.65);
-
-  const warmB = tagLight(new THREE.PointLight(0xffb25a, 1.45, 7.5, 2), 0xffb25a, 1.45, 0xffb25a, 0.1);
-  warmB.position.set(-1.45, 0.72, 1.55);
-
-  const moonDir = tagLight(new THREE.DirectionalLight(0xe7eeff, 0), 0xe7eeff, 0, 0xe7eeff, 0.85);
-  moonDir.position.set(3.15, 3.45, -6.1);
-  moonDir.target.position.set(0, 1.3, 0);
-
-  const moonFill = tagLight(new THREE.PointLight(0xd5e4ff, 0, 16, 2), 0xd5e4ff, 0, 0xd5e4ff, 3.4);
-  moonFill.position.set(2.2, 3.1, -1.2);
-
-  return { hemi, key, rim, fill, warmA, warmB, moonDir, moonFill };
+  const hemi = new THREE.HemisphereLight(0x273744, 0x080605, 0.55);
+  const key = new THREE.DirectionalLight(0xfff2df, 1.25);
+  key.position.set(-2.2, 4.2, 5.2);
+  const rim = new THREE.DirectionalLight(0x9ec8d6, 0.52);
+  rim.position.set(3.2, 3.5, -3.6);
+  const fill = new THREE.DirectionalLight(0x8eaeb8, 0.34);
+  fill.position.set(1.8, 1.6, 4.8);
+  const warm = new THREE.PointLight(0xffbe5c, 1.6, 5.0, 1.3);
+  warm.position.set(0, 1.95, -0.9);
+  const moonDir = new THREE.DirectionalLight(0xdceafa, 0.22);
+  moonDir.position.set(2.85, 3.25, -6.2);
+  moonDir.target.position.set(0, 1.15, 0);
+  const moonFill = new THREE.PointLight(0xbdd9e8, 0.28, 14, 2);
+  moonFill.position.set(1.8, 2.6, -1.4);
+  return { hemi, key, rim, fill, warm, moonDir, moonFill };
 }
 
 function createMoon() {
@@ -367,8 +423,8 @@ function createMoon() {
     blending: THREE.AdditiveBlending,
     toneMapped: false,
     uniforms: {
-      uIntensity: { value: 0 },
-      uColor: { value: new THREE.Color(0xe7eefc) },
+      uIntensity: { value: 1 },
+      uColor: { value: new THREE.Color(0xdceaf8) },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -384,30 +440,28 @@ function createMoon() {
       void main() {
         vec2 p = vUv * 2.0 - 1.0;
         float r = length(p);
-        float disc = smoothstep(0.26, 0.05, r);
-        float glow = exp(-r * r * 2.1) * smoothstep(1.0, 0.12, r);
-        vec3 col = uColor * uIntensity * (glow * 0.7 + disc * 0.85);
-        float alpha = clamp(glow + disc, 0.0, 1.0);
+        float disc = smoothstep(0.22, 0.04, r);
+        float glow = exp(-r * r * 3.2) * smoothstep(1.0, 0.14, r);
+        vec3 col = uColor * uIntensity * (glow * 0.55 + disc * 0.72);
+        float alpha = clamp(glow * 0.85 + disc, 0.0, 1.0);
         gl_FragColor = vec4(col, alpha);
       }
     `,
   });
   const moon = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
   moon.name = 'moon';
-  moon.position.set(3.15, 3.45, -6.1);
-  moon.scale.setScalar(8.4);
-  moon.userData.stillIntensity = 1.85;
+  moon.position.set(2.85, 3.25, -6.2);
+  moon.scale.setScalar(1.65);
   moon.renderOrder = 1;
   return moon;
 }
 
 function createGradeShader(level) {
   return {
-    name: 'SeraphGrade',
+    name: 'HaloGrade',
     uniforms: {
       tDiffuse: { value: null },
       uTime: { value: 0 },
-      uStill: { value: 0 },
       uGrain: { value: level.grain },
       uVignette: { value: level.vignette },
       uChroma: { value: level.chroma },
@@ -422,7 +476,6 @@ function createGradeShader(level) {
     fragmentShader: /* glsl */ `
       uniform sampler2D tDiffuse;
       uniform float uTime;
-      uniform float uStill;
       uniform float uGrain;
       uniform float uVignette;
       uniform float uChroma;
@@ -438,27 +491,20 @@ function createGradeShader(level) {
         vec2 centered = vUv - 0.5;
         float radius = dot(centered, centered);
         vec2 shift = centered * uChroma * radius;
-        float r = texture2D(tDiffuse, vUv + shift).r;
-        float g = texture2D(tDiffuse, vUv).g;
-        float b = texture2D(tDiffuse, vUv - shift).b;
-        vec3 col = vec3(r, g, b);
-
-        col.r *= mix(1.0, 0.94, uStill);
-        col.g *= mix(1.0, 1.015, uStill);
-        col.b *= mix(1.0, 1.07, uStill);
-        col += vec3(0.004, 0.0035, 0.004) * (1.0 - uStill);
-        col += vec3(0.002, 0.006, 0.008) * uStill;
-
+        vec3 col = vec3(
+          texture2D(tDiffuse, vUv + shift).r,
+          texture2D(tDiffuse, vUv).g,
+          texture2D(tDiffuse, vUv - shift).b
+        );
         float vig = smoothstep(0.92, 0.28, radius * 2.1);
         col *= mix(1.0 - uVignette, 1.0, vig);
-
         gl_FragColor = vec4(max(col, 0.0), 1.0);
         #include <tonemapping_fragment>
         float n1 = hash(gl_FragCoord.xy + fract(uTime * 13.1) * 90.0);
         float n2 = hash(gl_FragCoord.xy * 0.45 + 19.0 + fract(uTime * 7.3) * 40.0);
         float grain = (n1 + n2) * 0.5 - 0.5;
         float luma = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-        gl_FragColor.rgb = max(gl_FragColor.rgb + grain * uGrain * (1.2 - luma * 0.45), 0.0);
+        gl_FragColor.rgb = max(gl_FragColor.rgb + grain * uGrain * (0.75 + luma * 0.35), 0.0);
         #include <colorspace_fragment>
       }
     `,
@@ -468,63 +514,26 @@ function createGradeShader(level) {
 function createHud() {
   const root = document.createElement('div');
   root.className = 'hud';
+  root.classList.add('is-settled');
+  root.style.opacity = '1';
+  root.style.animation = 'none';
 
   const title = document.createElement('p');
   title.className = 'hud-title';
-  title.textContent = 'Seraphim';
+  title.textContent = 'Halo';
+  title.setAttribute('aria-label', 'Animated gold halo');
 
-  const caption = document.createElement('p');
-  caption.className = 'hud-caption';
-  caption.setAttribute('aria-live', 'polite');
-  const lineA = document.createElement('span');
-  const lineB = document.createElement('span');
-  lineA.className = 'line';
-  lineB.className = 'line';
-  caption.append(lineA, lineB);
+  const resetButton = document.createElement('button');
+  resetButton.className = 'hud-reset';
+  resetButton.type = 'button';
+  resetButton.textContent = 'Hero';
+  resetButton.setAttribute('aria-label', 'Return to centered halo view');
 
-  const button = document.createElement('button');
-  button.className = 'hud-toggle';
-  button.type = 'button';
-
-  root.append(title, caption, button);
+  const actions = document.createElement('div');
+  actions.className = 'hud-actions';
+  actions.append(resetButton);
+  root.append(title, actions);
   document.body.append(root);
 
-  const copy = {
-    radiant: ['Marble split by quiet fire,', 'wings raised in a dark orbit.'],
-    still: ['A moon on sleeping water,', 'the wings at last at rest.'],
-  };
-
-  let shown = 'radiant';
-  let timer = 0;
-
-  function write(form) {
-    const lines = copy[form] || copy.radiant;
-    lineA.textContent = lines[0];
-    lineB.textContent = lines[1];
-    shown = form;
-  }
-
-  function setForm(form, { animate } = {}) {
-    const label = form === 'radiant' ? 'Still' : 'Radiant';
-    button.textContent = label;
-    button.setAttribute('aria-label', `Switch to the ${label.toLowerCase()} form`);
-    button.setAttribute('aria-pressed', form === 'still' ? 'true' : 'false');
-    window.clearTimeout(timer);
-    // A reversal before the fade finishes must restore the line already on screen.
-    if (!animate || form === shown) {
-      caption.classList.remove('is-out');
-      write(form);
-      return;
-    }
-    caption.classList.add('is-out');
-    timer = window.setTimeout(() => {
-      write(form);
-      caption.classList.remove('is-out');
-    }, 420);
-  }
-
-  write('radiant');
-  setForm('radiant', { animate: false });
-
-  return { root, button, setForm };
+  return { root, resetButton };
 }

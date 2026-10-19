@@ -10,14 +10,12 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
 function isLowQuality() {
   const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const saveData = navigator.connection && navigator.connection.saveData;
   return narrow || coarse || saveData;
 }
-
 function pixelRatioCap() {
   const dpr = window.devicePixelRatio || 1;
   return isLowQuality() ? Math.min(dpr, 1.15) : Math.min(dpr, 1.6);
@@ -90,40 +88,89 @@ const particleVertex = /* glsl */ `
 
   uniform float uTime;
   uniform float uStill;
+  uniform float uTransition;
   uniform float uPixelRatio;
 
   varying float vAlpha;
   varying float vWarm;
   varying float vBurst;
   varying float vSeed;
+  varying float vBokeh;
 
   void main() {
-    float ang = aPhase + uTime * aSpeed * mix(1.0, 0.35, uStill);
-    float breathe = 1.0 + 0.05 * sin(uTime * 0.28 + aPhase);
-    float r = aRadius * breathe;
-    vec3 p = vec3(cos(ang) * r, 0.0, sin(ang) * r * aEcc);
+    // Radiant orbital motion around the figure, halo, and trails
+    float angRad = aPhase + uTime * aSpeed;
+    float breathe = 1.0 + 0.045 * sin(uTime * 0.28 + aPhase);
+    float rRad = aRadius * breathe;
+    vec3 pRad = vec3(cos(angRad) * rRad, 0.0, sin(angRad) * rRad * aEcc);
     float cx = cos(aTilt);
     float sx = sin(aTilt);
-    float y = -p.z * sx;
-    float z = p.z * cx;
-    p.y = y + aY0 + sin(uTime * 0.22 + aSeed * 6.28318) * aYAmp;
-    p.z = z;
+    float yTilt = -pRad.z * sx;
+    float zTilt = pRad.z * cx;
+    pRad.y = yTilt + aY0 + sin(uTime * 0.22 + aSeed * 6.28318) * aYAmp;
+    pRad.z = zTilt;
+
+    // Still rising motion: cool fine particles rising through the mandala + water-level motes
+    float roleRoll = fract(aSeed * 17.3);
+    bool isColumn = roleRoll < 0.58;
+    bool isSurface = !isColumn && roleRoll < 0.80;
+    float rScaleStill = isColumn
+      ? mix(0.25, 0.58, fract(aSeed * 9.1))
+      : isSurface
+        ? mix(0.48, 0.88, fract(aSeed * 11.3))
+        : mix(0.68, 1.02, fract(aSeed * 5.7));
+    float rStill = aRadius * rScaleStill;
+    float angStill = aPhase + uTime * aSpeed * (isSurface ? 0.24 : 0.14) + sin(uTime * 0.18 + aSeed * 12.0) * 0.14;
+    float riseLow = isColumn ? -0.18 : isSurface ? -0.52 : -0.38;
+    float riseSpan = isColumn ? 2.78 : isSurface ? 0.92 : 2.95;
+    float riseSpeed = (0.038 + fract(aSeed * 23.1) * 0.062) * (isColumn ? 1.12 : isSurface ? 0.55 : 0.72);
+    float riseProg = fract((aY0 - riseLow) / riseSpan + uTime * riseSpeed + aSeed);
+    float yStill = riseLow + riseProg * riseSpan;
+    // Gentle outward flare near the top of the mandala column so it never pinches into a sharp cone
+    float columnFlare = isColumn ? mix(0.88, 1.18, smoothstep(0.15, 0.90, riseProg)) : 1.0;
+    float driftX = sin(yStill * 1.45 + aSeed * 19.0 + uTime * 0.22) * 0.08;
+    float driftZ = cos(yStill * 1.25 + aSeed * 13.0 + uTime * 0.18) * 0.08;
+    vec3 pStill = vec3(
+      cos(angStill) * rStill * columnFlare + driftX,
+      yStill,
+      sin(angStill) * rStill * mix(0.72, 1.0, aEcc) - 0.16 + driftZ
+    );
+
+    vec3 p = mix(pRad, pStill, uStill);
 
     vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
-    float tw = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * aTwinkle + aPhase));
-    float burst = pow(max(sin(uTime * 0.62 + aSeed * 57.0), 0.0), 22.0) * aSpark * (1.0 - uStill);
-    float gate = mix(1.0, smoothstep(0.1, 0.015, aSeed), uStill);
+    float tw = 0.38 + 0.62 * (0.5 + 0.5 * sin(uTime * aTwinkle + aPhase));
+    float isBokeh = step(1.5, aSpark);
+    float isNormalSpark = step(0.5, aSpark) * (1.0 - isBokeh);
+    float burst = pow(max(sin(uTime * 0.62 + aSeed * 57.0), 0.0), 22.0) * isNormalSpark * (1.0 - uStill);
 
-    vAlpha = gate * tw * mix(1.0, 0.55, uStill);
+    // Radiant concentrates dust around the halo/figure and keeps outer charcoal corners clean
+    float radRadialFade = smoothstep(3.05, 1.25, aRadius);
+    float radGate = mix(0.10, 1.0, radRadialFade);
+
+    // Still keeps a rich rising column of cool motes with smooth vertical fade-in/out
+    float riseEnv = smoothstep(0.0, 0.14, riseProg) * smoothstep(1.0, 0.64, riseProg);
+    float stillKeep = smoothstep(0.94, 0.14, aSeed);
+    float stillGate = stillKeep * riseEnv * (isColumn ? 1.22 : isSurface ? 1.05 : 0.72);
+
+    float gate = mix(radGate, stillGate, uStill);
+    float bokehAlpha = mix(0.34, 0.24, uStill) * (0.78 + 0.22 * tw);
+
+    vAlpha = mix(gate * tw * mix(0.90, 0.96, uStill), bokehAlpha, isBokeh);
+    vAlpha *= 1.0 + uTransition * 0.42;
     vWarm = 1.0 - uStill;
     vBurst = burst;
     vSeed = aSeed;
+    vBokeh = isBokeh;
 
-    float size = aSize * mix(1.0, 0.62, uStill);
-    size *= 0.72 + 0.5 * tw;
-    size += burst * aSize * 2.8;
+    float size = aSize * mix(1.0, isColumn ? 1.18 : 0.94, uStill);
+    size *= 0.76 + 0.48 * tw;
+    size += burst * aSize * 2.4;
+    if (isBokeh > 0.5) {
+      size = aSize * mix(1.0, 0.88, uStill);
+    }
     gl_PointSize = clamp(size * uPixelRatio * (7.4 / max(-mvPosition.z, 0.2)), 0.0, 64.0);
 
     #include <fog_vertex>
@@ -135,22 +182,34 @@ const particleFragment = /* glsl */ `
   #include <fog_pars_fragment>
 
   uniform sampler2D uSprite;
+  uniform float uTransition;
   varying float vAlpha;
   varying float vWarm;
   varying float vBurst;
   varying float vSeed;
+  varying float vBokeh;
 
   void main() {
     vec4 tex = texture2D(uSprite, gl_PointCoord);
-    if (tex.a < 0.03) discard;
+    if (tex.a < 0.020) discard;
     float tone = fract(vSeed * 7.13);
-    vec3 gold = mix(vec3(1.15, 0.68, 0.28), vec3(1.45, 1.12, 0.68), tone);
-    vec3 hot = vec3(3.1, 2.35, 1.55);
-    vec3 cool = vec3(0.72, 0.84, 1.08);
-    float flare = clamp(vBurst * 1.35, 0.0, 1.0);
-    vec3 col = mix(gold, hot, flare);
-    col = mix(col, cool * mix(1.15, 0.7, vWarm), 1.0 - vWarm);
-    float alpha = tex.a * clamp(vAlpha + flare, 0.0, 1.0);
+    vec3 gold = mix(vec3(1.12, 0.76, 0.34), vec3(1.48, 1.20, 0.76), tone);
+    vec3 hot = vec3(2.65, 2.08, 1.42);
+    vec3 cool = mix(vec3(0.80, 1.00, 1.12), vec3(1.18, 1.26, 1.36), tone);
+    float flare = clamp(vBurst * 1.25, 0.0, 1.0);
+    vec3 warmCol = mix(gold, hot, flare);
+    vec3 col = mix(cool, warmCol, vWarm);
+    col = mix(col, vec3(2.2, 1.86, 1.22), uTransition * 0.48);
+
+    // Soft out-of-focus foreground bokeh disc with a warm ivory/cool ice core
+    float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+    float bokehCore = smoothstep(0.48, 0.06, d) * 0.55;
+    float bokehHalo = exp(-d * d * 2.4) * smoothstep(1.0, 0.06, d);
+    float bokehShape = clamp(bokehHalo + bokehCore, 0.0, 1.0);
+    col = mix(col, mix(vec3(1.15, 1.24, 1.32), vec3(1.45, 1.28, 0.98), vWarm), vBokeh * 0.55);
+    float shapeAlpha = mix(tex.a, bokehShape, vBokeh);
+
+    float alpha = shapeAlpha * clamp(vAlpha + flare + uTransition * 0.12, 0.0, 1.0);
     gl_FragColor = vec4(col, alpha);
     // Additive blending must fade alpha. Mixing toward fogColor would add the
     // still-form teal fog into the motes.
@@ -166,16 +225,16 @@ const particleFragment = /* glsl */ `
 `;
 
 const WISPS = [
-  { pos: [-1.05, -0.15, 0.55], scale: [3.1, 1.15], opacity: 0.2, phase: 0.4 },
-  { pos: [0.85, -0.45, 0.35], scale: [3.6, 1.35], opacity: 0.16, phase: 1.7 },
-  { pos: [-1.8, 0.15, -0.15], scale: [2.4, 0.95], opacity: 0.13, phase: 2.4 },
-  { pos: [1.65, -0.05, 0.7], scale: [2.6, 1.05], opacity: 0.14, phase: 0.9 },
-  { pos: [0.15, -0.85, 0.95], scale: [4.0, 1.45], opacity: 0.12, phase: 3.1 },
-  { pos: [-0.35, 0.35, -0.55], scale: [2.2, 0.85], opacity: 0.1, phase: 4.2 },
-  { pos: [0.4, -0.25, 1.35], scale: [2.8, 1.0], opacity: 0.11, phase: 5.0 },
+  { pos: [0.0, 1.92, -0.92], scale: [4.2, 2.8], radOpacity: 0.14, stillOpacity: 0.16, phase: 0.4 },
+  { pos: [-1.15, -0.32, 0.25], scale: [3.2, 1.15], radOpacity: 0.10, stillOpacity: 0.13, phase: 1.7 },
+  { pos: [0.95, -0.48, 0.20], scale: [3.4, 1.20], radOpacity: 0.09, stillOpacity: 0.13, phase: 2.4 },
+  { pos: [-1.75, 0.48, -0.45], scale: [3.0, 1.35], radOpacity: 0.09, stillOpacity: 0.14, phase: 0.9 },
+  { pos: [1.65, 0.38, -0.35], scale: [3.0, 1.30], radOpacity: 0.09, stillOpacity: 0.14, phase: 3.1 },
+  { pos: [0.10, -0.76, 0.55], scale: [3.8, 1.20], radOpacity: 0.08, stillOpacity: 0.11, phase: 4.2 },
+  { pos: [0.0, 0.98, -1.30], scale: [4.6, 2.35], radOpacity: 0.11, stillOpacity: 0.17, phase: 5.0 },
 ];
 
-function buildAttributes(count, sparks, rand) {
+function buildAttributes(count, sparks, bokehCount, rand) {
   const size = new Float32Array(count);
   const radius = new Float32Array(count);
   const speed = new Float32Array(count);
@@ -188,36 +247,59 @@ function buildAttributes(count, sparks, rand) {
   const spark = new Float32Array(count);
   const seed = new Float32Array(count);
 
+  const bokehSlots = [
+    [-1.48, 0.08, 0.55],
+    [1.36, -0.06, 0.62],
+    [-1.68, 0.62, 0.35],
+    [1.58, 0.48, 0.38],
+    [-0.96, -0.28, 0.72],
+  ];
+
   for (let i = 0; i < count; i++) {
     const roll = rand();
     let r;
     let y;
     let px;
-    if (roll < 0.42) {
-      r = 0.35 + rand() * 1.55;
-      y = -0.2 + rand() * 3.5;
-      px = 1.5 + rand() * 2.1;
-    } else if (roll < 0.82) {
-      r = 1.2 + rand() * 2.3;
-      y = -0.9 + rand() * 5.0;
-      px = 1.3 + rand() * 2.4;
+    if (roll < 0.58) {
+      // Inner halo & figure column
+      r = 0.26 + rand() * 1.28;
+      y = -0.12 + rand() * 3.25;
+      px = 1.45 + rand() * 2.10;
+    } else if (roll < 0.90) {
+      // Mid-range orbital & rising field
+      r = 1.10 + rand() * 1.48;
+      y = -0.68 + rand() * 3.95;
+      px = 1.25 + rand() * 2.00;
     } else {
-      r = 2.8 + rand() * 2.4;
-      y = -1.3 + rand() * 5.6;
-      px = 1.2 + rand() * 1.8;
+      // Restrained outer atmospheric motes
+      r = 2.25 + rand() * 1.35;
+      y = -0.85 + rand() * 4.10;
+      px = 1.00 + rand() * 1.35;
     }
-    const isSpark = i >= count - sparks;
-    size[i] = isSpark ? 5.5 + rand() * 4.5 : px;
+    const isBokeh = i >= count - bokehCount;
+    const isSpark = !isBokeh && i >= count - bokehCount - sparks;
+    if (isSpark && r < 0.88) r += 0.68;
+    let ph = rand() * Math.PI * 2;
+    if (isBokeh) {
+      const slot = bokehSlots[(i - (count - bokehCount)) % bokehSlots.length];
+      r = Math.hypot(slot[0], slot[2]);
+      ph = Math.atan2(slot[2], slot[0]);
+      y = slot[1];
+    } else if (isSpark && Math.sin(ph) > 0 && Math.abs(Math.cos(ph) * r) < 0.72 && y > -0.1 && y < 2.4) {
+      // Keep foreground sparks from overlapping the central dark torso/pelvis/face in the hero view
+      ph += Math.PI;
+    }
+    size[i] = isBokeh ? 32.0 + rand() * 12.0 : isSpark ? 4.4 + rand() * 3.2 : px;
     radius[i] = r;
     const dir = rand() < 0.5 ? -1 : 1;
-    speed[i] = dir * (0.045 + rand() * 0.28) * (isSpark ? 1.25 : 1);
-    phase[i] = rand() * Math.PI * 2;
+    speed[i] = dir * (0.04 + rand() * 0.24) * (isSpark ? 1.2 : isBokeh ? 0.14 : 1);
+    phase[i] = ph;
     y0[i] = y;
-    yAmp[i] = 0.08 + rand() * 0.28;
-    ecc[i] = 0.5 + rand() * 0.62;
-    tilt[i] = (rand() - 0.5) * 1.7;
-    twinkle[i] = 1.4 + rand() * 4.2;
-    spark[i] = isSpark ? 1 : 0;
+    yAmp[i] = isBokeh ? 0.04 + rand() * 0.05 : 0.07 + rand() * 0.24;
+    ecc[i] = isBokeh ? 0.92 : 0.54 + rand() * 0.56;
+    tilt[i] = isBokeh ? 0.05 : (rand() - 0.5) * 1.45;
+    twinkle[i] = 1.3 + rand() * 3.8;
+    spark[i] = isBokeh ? 2 : isSpark ? 1 : 0;
     seed[i] = rand();
   }
 
@@ -225,9 +307,8 @@ function buildAttributes(count, sparks, rand) {
 }
 
 /**
- * Gold dust, orbiting sparks, and faint wisps near the floor.
- * `marble` is accepted so the shared signature stays stable.
- * Still form keeps a sparse field of cool-white motes.
+ * Charcoal-and-gold dust, soft peripheral bokeh, and warm haze in Radiant;
+ * cool fine rising particles and deep-teal cloudy mist in Still.
  */
 export function createParticles(marble) {
   void marble;
@@ -235,11 +316,12 @@ export function createParticles(marble) {
   group.name = 'particles';
 
   const low = isLowQuality();
-  const count = low ? 480 : 1680;
-  const sparks = low ? 24 : 84;
+  const count = low ? 480 : 1560;
+  const sparks = low ? 20 : 64;
+  const bokehCount = low ? 3 : 5;
   const rand = mulberry32(0x0d57);
 
-  const attrs = buildAttributes(count, sparks, rand);
+  const attrs = buildAttributes(count, sparks, bokehCount, rand);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
   const bind = (name, array) => geo.setAttribute(name, new THREE.BufferAttribute(array, 1));
@@ -261,6 +343,7 @@ export function createParticles(marble) {
       {
         uTime: { value: 0 },
         uStill: { value: 0 },
+        uTransition: { value: 0 },
         uPixelRatio: { value: pixelRatioCap() },
         uSprite: { value: sparkTexture() },
       },
@@ -279,14 +362,18 @@ export function createParticles(marble) {
   group.add(points);
 
   const wispMap = wispTexture();
-  const wisps = WISPS.slice(0, low ? 3 : WISPS.length).map((spec) => {
+  const radWispColor = new THREE.Color().setRGB(0.56, 0.43, 0.25);
+  const stillWispColor = new THREE.Color().setRGB(0.15, 0.36, 0.43);
+  const transitionWispColor = new THREE.Color(0xffe4b6);
+
+  const wisps = WISPS.slice(0, low ? 4 : WISPS.length).map((spec) => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: wispMap,
-        color: new THREE.Color().setRGB(0.72, 0.58, 0.38),
+        color: radWispColor.clone(),
         transparent: true,
         depthWrite: false,
-        opacity: spec.opacity,
+        opacity: spec.radOpacity,
         blending: THREE.NormalBlending,
         fog: true,
       }),
@@ -299,12 +386,15 @@ export function createParticles(marble) {
   });
 
   let blend = 0;
+  let transitionEnvelope = 0;
 
   function applyWisps() {
-    const fade = 1 - blend;
     for (const sprite of wisps) {
-      sprite.material.opacity = sprite.userData.opacity * fade;
-      sprite.visible = fade > 0.02;
+      const spec = sprite.userData;
+      sprite.material.color.copy(radWispColor).lerp(stillWispColor, blend);
+      sprite.material.color.lerp(transitionWispColor, transitionEnvelope * 0.24);
+      sprite.material.opacity = THREE.MathUtils.lerp(spec.radOpacity, spec.stillOpacity, blend) + transitionEnvelope * 0.035;
+      sprite.visible = sprite.material.opacity > 0.01;
     }
   }
 
@@ -319,13 +409,14 @@ export function createParticles(marble) {
       void dt;
       material.uniforms.uTime.value = time;
       material.uniforms.uStill.value = blend;
+      material.uniforms.uTransition.value = transitionEnvelope;
       applyWisps();
       for (const sprite of wisps) {
         const spec = sprite.userData;
-        const drift = Math.sin(time * 0.18 + spec.phase);
-        sprite.position.x = spec.pos[0] + drift * 0.18;
-        sprite.position.y = spec.pos[1] + Math.cos(time * 0.13 + spec.phase) * 0.08 - blend * 0.35;
-        sprite.scale.set(spec.scale[0] * (1 + drift * 0.04), spec.scale[1], 1);
+        const drift = Math.sin(time * 0.16 + spec.phase);
+        sprite.position.x = spec.pos[0] + drift * 0.16;
+        sprite.position.y = spec.pos[1] + Math.cos(time * 0.12 + spec.phase) * 0.07 - blend * 0.22;
+        sprite.scale.set(spec.scale[0] * (1 + drift * 0.04), spec.scale[1] * (1 + blend * 0.12), 1);
       }
     },
     setForm(form, t) {
@@ -333,6 +424,12 @@ export function createParticles(marble) {
       if (next === null) return;
       blend = next;
       material.uniforms.uStill.value = blend;
+      applyWisps();
+    },
+    setTransition(signal) {
+      const value = Number(signal?.envelope);
+      transitionEnvelope = Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0;
+      material.uniforms.uTransition.value = transitionEnvelope;
       applyWisps();
     },
     dispose() {

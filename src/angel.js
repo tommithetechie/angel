@@ -223,28 +223,29 @@ function createFeatherGeometry() {
   return geo;
 }
 
+const BODY_PROFILE = [
+  [-0.16, 0.035],
+  [-0.1, 0.105],
+  [-0.04, 0.132],
+  [0.0, 0.15],
+  [0.08, 0.148],
+  [0.16, 0.11],
+  [0.22, 0.082],
+  [0.3, 0.086],
+  [0.38, 0.115],
+  [0.46, 0.13],
+  [0.54, 0.122],
+  [0.62, 0.105],
+  [0.7, 0.074],
+  [0.8, 0.052],
+];
+
 function bodyDisplace(vertex) {
   radialDisplace(vertex, (theta, y) => {
-    const profile = [
-      [-0.22, 0.048],
-      [-0.14, 0.078],
-      [-0.06, 0.1],
-      [0.02, 0.116],
-      [0.1, 0.12],
-      [0.16, 0.092],
-      [0.22, 0.074],
-      [0.3, 0.086],
-      [0.38, 0.1],
-      [0.46, 0.108],
-      [0.54, 0.1],
-      [0.62, 0.086],
-      [0.7, 0.058],
-      [0.78, 0.042],
-    ];
-    let r = profile[0][1];
-    for (let i = 0; i < profile.length - 1; i++) {
-      const [y0, r0] = profile[i];
-      const [y1, r1] = profile[i + 1];
+    let r = BODY_PROFILE[0][1];
+    for (let i = 0; i < BODY_PROFILE.length - 1; i++) {
+      const [y0, r0] = BODY_PROFILE[i];
+      const [y1, r1] = BODY_PROFILE[i + 1];
       if (y >= y0 && y <= y1) {
         const f = (y - y0) / (y1 - y0);
         r = r0 + (r1 - r0) * f;
@@ -269,6 +270,8 @@ function bodyDisplace(vertex) {
 
     const shoulder = Math.exp(-((y - 0.64) ** 2) / (2 * 0.05 * 0.05));
     r += 0.058 * shoulder * Math.pow(side, 0.55);
+    const ribcage = Math.exp(-((y - 0.47) ** 2) / (2 * 0.12 * 0.12));
+    r += 0.016 * ribcage * (0.35 + 0.65 * front);
     const glute = Math.exp(-((y - 0.0) ** 2) / (2 * 0.065 * 0.065));
     r += 0.04 * glute * rear * (0.5 + 0.5 * side);
     const hip = Math.exp(-((y - 0.06) ** 2) / (2 * 0.055 * 0.055));
@@ -321,11 +324,11 @@ function limbGeometry(profile, length, kind) {
 function footGeometry() {
   const geo = lathe(
     [
-      [0, 0.022],
-      [0.035, 0.028],
-      [0.08, 0.02],
-      [0.13, 0.012],
-      [0.175, 0.0035],
+      [0, 0.028],
+      [0.035, 0.034],
+      [0.08, 0.024],
+      [0.13, 0.016],
+      [0.19, 0.0045],
     ],
     16,
     (vertex) => {
@@ -412,42 +415,42 @@ const FORE = 0.34;
 
 const THIGH_GEO = limbGeometry(
   [
-    [0, 0.078],
-    [0.12, 0.08],
-    [0.4, 0.06],
-    [0.75, 0.05],
-    [1, 0.042],
+    [0, 0.096],
+    [0.12, 0.102],
+    [0.4, 0.082],
+    [0.75, 0.064],
+    [1, 0.05],
   ],
   THIGH,
   'thigh',
 );
 const SHIN_GEO = limbGeometry(
   [
-    [0, 0.042],
-    [0.18, 0.05],
-    [0.4, 0.038],
-    [0.78, 0.026],
-    [1, 0.02],
+    [0, 0.052],
+    [0.18, 0.058],
+    [0.4, 0.046],
+    [0.78, 0.032],
+    [1, 0.024],
   ],
   SHIN,
   'shin',
 );
 const UPPER_GEO = limbGeometry(
   [
-    [0, 0.046],
-    [0.2, 0.044],
-    [0.6, 0.036],
-    [1, 0.03],
+    [0, 0.058],
+    [0.2, 0.056],
+    [0.6, 0.044],
+    [1, 0.034],
   ],
   UPPER,
   'upper',
 );
 const FORE_GEO = limbGeometry(
   [
-    [0, 0.03],
-    [0.25, 0.028],
-    [0.7, 0.022],
-    [1, 0.017],
+    [0, 0.038],
+    [0.25, 0.035],
+    [0.7, 0.027],
+    [1, 0.02],
   ],
   FORE,
   'fore',
@@ -506,13 +509,15 @@ function makeWingSpecs(light) {
       layers,
       flutter: 0.055,
       open: {
-        points: [v3(0, 0, 0), v3(0.22 * s, 0.3, -0.05), v3(0.06 * s, 1.05, -0.01), v3(-0.11 * s, 1.6, 0.03)],
-        hints: [v3(0.15 * s, 0.95, 0.06), v3(0.55 * s, 0.72, 0.1), v3(0.02 * s, 0.99, 0.02)],
+        // The upper primaries leave the shoulders laterally, crest above the
+        // head, then turn back in for an open crown instead of a straight fan.
+        points: [v3(0, 0, 0), v3(0.32 * s, 0.26, -0.08), v3(0.72 * s, 1.02, 0.0), v3(0.22 * s, 1.58, 0.06)],
+        hints: [v3(0.2 * s, 0.94, 0.06), v3(0.68 * s, 0.76, 0.1), v3(-0.16 * s, 0.98, 0.02)],
         fan0: 0.14,
         fan1: 0.28,
-        out: 0.8,
+        out: 0.86,
         lenMul: 1,
-        width: 1.02,
+        width: 1.08,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.05 * s, -0.28, -0.06), v3(0.03 * s, -0.58, -0.04), v3(0.01 * s, -0.92, -0.02)],
@@ -534,13 +539,15 @@ function makeWingSpecs(light) {
       layers,
       flutter: 0.07,
       open: {
-        points: [v3(0, 0, 0), v3(0.28 * s, 0.1, -0.05), v3(0.55 * s, 0.22, -0.02), v3(0.78 * s, 0.34, 0.02)],
-        hints: [v3(0.02 * s, -0.99, 0.08), v3(0.22 * s, -0.92, 0.05), v3(0.72 * s, -0.48, 0.03)],
+        // A broad shoulder-to-tip sweep keeps the middle pair behind the
+        // torso while giving the outer primaries a clear lateral arc.
+        points: [v3(0, 0, 0), v3(0.36 * s, 0.08, -0.16), v3(0.86 * s, 0.3, -0.1), v3(1.22 * s, 0.58, 0.02)],
+        hints: [v3(0.04 * s, -0.99, 0.08), v3(0.34 * s, -0.9, 0.05), v3(1.02 * s, -0.42, 0.03)],
         fan0: 0.18,
-        fan1: 0.62,
-        out: 0.86,
+        fan1: 0.68,
+        out: 0.9,
         lenMul: 1,
-        width: 0.88,
+        width: 0.96,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.08 * s, -0.32, -0.08), v3(0.05 * s, -0.68, -0.05), v3(0.02 * s, -1.05, -0.02)],
@@ -563,13 +570,15 @@ function makeWingSpecs(light) {
       flutter: 0.085,
       lenBias: s < 0 ? 1.06 : 1,
       open: {
-        points: [v3(0, 0, 0), v3(0.14 * s, -0.55, -0.06), v3(0.18 * s, -1.18, -0.03), v3(0.04 * s, -1.95, 0.0)],
-        hints: [v3(0.2 * s, -0.94, -0.04), v3(0.28 * s, -0.9, -0.02), v3(0.05 * s, -1, 0.0)],
+        // Lower primaries flow away from the legs as they descend, leaving a
+        // visible central gap instead of two straight hanging strips.
+        points: [v3(0, 0, 0), v3(0.42 * s, -0.48, -0.14), v3(1.04 * s, -1.12, -0.1), v3(0.68 * s, -1.95, -0.02)],
+        hints: [v3(0.3 * s, -0.94, -0.04), v3(0.98 * s, -0.84, -0.02), v3(0.64 * s, -0.98, 0.0)],
         fan0: 0.42,
-        fan1: 0.1,
-        out: 0.82,
+        fan1: 0.16,
+        out: 0.78,
         lenMul: 1,
-        width: 1.05,
+        width: 1.1,
       },
       closed: {
         points: [v3(0, 0, 0), v3(0.05 * s, -0.22, -0.05), v3(0.03 * s, -0.42, -0.03), v3(0.01 * s, -0.62, -0.01)],
@@ -610,7 +619,7 @@ function buildRecipes(specs, rand) {
   return recipes;
 }
 
-function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
+function writeRibbon(geo, points, width, depth, upHint, vertexOffset = 0, curve) {
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return false;
@@ -626,6 +635,7 @@ function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
   }
 
   const steps = geo.userData.steps;
+  const crossSection = geo.userData.crossSection || 2;
   const pos = geo.attributes.position;
   const up = upHint || _up;
   let k = vertexOffset;
@@ -636,9 +646,17 @@ function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
     _x.crossVectors(tang, up);
     if (_x.lengthSq() < 1e-6) _x.crossVectors(tang, _fwd);
     _x.normalize();
-    const w = width * Math.pow(1 - t, 0.62);
-    pos.setXYZ(k++, p.x + _x.x * w, p.y + _x.y * w, p.z + _x.z * w);
-    pos.setXYZ(k++, p.x - _x.x * w, p.y - _x.y * w, p.z - _x.z * w);
+    _z.crossVectors(tang, _x).normalize();
+    // Taper into the scalp as well as at the tip: closed ends avoid exposed
+    // cut-tube rims when the swept locks are viewed from above or in Still.
+    const taper = smoothstep(0, 0.14, t) * Math.pow(1 - t, 0.62);
+    const w = width * taper;
+    const d = (depth || width * 0.46) * taper;
+    for (let c = 0; c < crossSection; c++) {
+      const angle = (c / crossSection) * Math.PI * 2;
+      _a.copy(_x).multiplyScalar(Math.cos(angle) * w).addScaledVector(_z, Math.sin(angle) * d);
+      pos.setXYZ(k++, p.x + _a.x, p.y + _a.y, p.z + _a.z);
+    }
   }
   pos.needsUpdate = true;
   return true;
@@ -646,7 +664,8 @@ function writeRibbon(geo, points, width, upHint, vertexOffset = 0, curve) {
 
 function createHair(material) {
   const steps = 14;
-  const stride = (steps + 1) * 2;
+  const crossSection = 6;
+  const stride = (steps + 1) * crossSection;
   const positions = new Float32Array(HAIR.length * stride * 3);
   const uvs = new Float32Array(HAIR.length * stride * 2);
   const indices = [];
@@ -654,19 +673,23 @@ function createHair(material) {
     const base = spec.pts.map((p) => v3(p[0], p[1], p[2]));
     const vertex = index * stride;
     for (let i = 0; i <= steps; i++) {
-      const o = (vertex + i * 2) * 2;
-      uvs[o] = 0;
-      uvs[o + 1] = i / steps;
-      uvs[o + 2] = 1;
-      uvs[o + 3] = i / steps;
-      if (i < steps) {
-        const a = vertex + i * 2;
-        indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      for (let c = 0; c < crossSection; c++) {
+        const o = (vertex + i * crossSection + c) * 2;
+        uvs[o] = c / (crossSection - 1);
+        uvs[o + 1] = i / steps;
+        if (i < steps) {
+          const a = vertex + i * crossSection + c;
+          const b = a + crossSection;
+          const next = vertex + i * crossSection + ((c + 1) % crossSection);
+          const nextB = next + crossSection;
+          indices.push(a, b, next, next, b, nextB);
+        }
       }
     }
     return {
       base,
       width: spec.w,
+      depth: spec.d || spec.w * 0.46,
       up: v3(spec.up[0], spec.up[1], spec.up[2]),
       vertex,
       scratch: base.map(() => new THREE.Vector3()),
@@ -678,8 +701,9 @@ function createHair(material) {
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.userData.steps = steps;
+  geo.userData.crossSection = crossSection;
   for (const strand of strands) {
-    writeRibbon(geo, strand.base, strand.width, strand.up, strand.vertex, strand.curve);
+    writeRibbon(geo, strand.base, strand.width, strand.depth, strand.up, strand.vertex, strand.curve);
   }
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, material);
@@ -689,20 +713,25 @@ function createHair(material) {
 }
 
 const HAIR = [
-  { w: 0.055, up: [0, 0, 1], pts: [[0.0, 0.12, 0.06], [-0.06, 0.04, 0.12], [-0.16, -0.12, 0.08], [-0.26, -0.32, 0.0]] },
-  { w: 0.042, up: [0, 0, 1], pts: [[0.03, 0.13, 0.05], [-0.04, 0.02, 0.13], [-0.14, -0.16, 0.1], [-0.22, -0.38, 0.02]] },
-  { w: 0.036, up: [0, 1, 0], pts: [[-0.02, 0.14, 0.02], [-0.1, 0.06, 0.06], [-0.22, -0.1, 0.02], [-0.34, -0.28, -0.04]] },
-  { w: 0.05, up: [0, 1, 0], pts: [[0.02, 0.15, -0.02], [-0.08, 0.1, -0.06], [-0.2, -0.05, -0.1], [-0.3, -0.28, -0.08]] },
-  { w: 0.046, up: [1, 0, 0], pts: [[0.0, 0.13, -0.06], [-0.04, 0.02, -0.12], [-0.08, -0.18, -0.14], [-0.06, -0.42, -0.12]] },
-  { w: 0.034, up: [1, 0, 0], pts: [[0.06, 0.12, -0.04], [0.1, 0.02, -0.08], [0.08, -0.16, -0.1], [0.04, -0.32, -0.08]] },
-  { w: 0.03, up: [0, 1, 0], pts: [[-0.05, 0.14, 0.0], [-0.12, 0.2, 0.04], [-0.18, 0.14, 0.08], [-0.22, 0.02, 0.06]] },
-  { w: 0.028, up: [0, 0, 1], pts: [[0.04, 0.15, 0.0], [0.02, 0.22, 0.04], [-0.06, 0.2, 0.08], [-0.12, 0.1, 0.06]] },
-  { w: 0.04, up: [0, 0, 1], pts: [[0.05, 0.1, 0.08], [-0.02, -0.02, 0.12], [-0.1, -0.2, 0.06], [-0.16, -0.4, -0.02]] },
-  { w: 0.026, up: [0, 1, 0], pts: [[-0.04, 0.11, 0.09], [-0.12, -0.02, 0.1], [-0.2, -0.2, 0.04], [-0.28, -0.36, -0.02]] },
-  { w: 0.033, up: [0, 1, 0], pts: [[0.0, 0.145, -0.01], [-0.14, 0.08, -0.02], [-0.26, -0.08, 0.02], [-0.36, -0.22, 0.06]] },
-  { w: 0.024, up: [0, 0, 1], pts: [[0.08, 0.11, 0.04], [0.12, 0.0, 0.02], [0.1, -0.14, -0.02], [0.06, -0.26, -0.04]] },
-  { w: 0.038, up: [1, 0, 0], pts: [[-0.02, 0.1, -0.08], [-0.1, -0.02, -0.1], [-0.16, -0.22, -0.06], [-0.18, -0.4, 0.0]] },
-  { w: 0.02, up: [0, 1, 0], pts: [[0.01, 0.16, 0.04], [-0.05, 0.22, 0.1], [-0.12, 0.16, 0.14], [-0.16, 0.06, 0.1]] },
+  // Front locks form two broad, wind-swept veils that cross the cheeks.
+  { w: 0.082, up: [0, 1, 0], pts: [[0.02, 0.15, 0.14], [0.12, 0.06, 0.19], [0.24, -0.2, 0.17], [0.3, -0.54, 0.1]] },
+  { w: 0.074, up: [0, 1, 0], pts: [[-0.04, 0.16, 0.15], [0.03, 0.05, 0.21], [0.08, -0.18, 0.18], [0.16, -0.5, 0.12]] },
+  { w: 0.07, up: [0, 1, 0], pts: [[-0.08, 0.14, 0.12], [-0.12, 0.03, 0.18], [-0.22, -0.16, 0.13], [-0.34, -0.42, 0.04]] },
+  { w: 0.064, up: [0, 1, 0], pts: [[0.11, 0.13, 0.11], [0.2, 0.02, 0.16], [0.3, -0.18, 0.08], [0.4, -0.44, -0.02]] },
+  { w: 0.056, up: [0, 0, 1], pts: [[0.0, 0.17, 0.08], [0.1, 0.25, 0.08], [0.24, 0.2, 0.02], [0.34, -0.02, -0.02]] },
+  { w: 0.052, up: [0, 0, 1], pts: [[-0.04, 0.17, 0.06], [-0.1, 0.24, 0.03], [-0.2, 0.14, -0.02], [-0.32, -0.08, -0.04]] },
+  // Side masses keep the silhouette readable in three-quarter and side views.
+  { w: 0.088, up: [0, 1, 0], pts: [[-0.08, 0.1, -0.02], [-0.2, -0.12, -0.08], [-0.34, -0.42, -0.1], [-0.44, -0.8, -0.06]] },
+  { w: 0.082, up: [0, 1, 0], pts: [[0.1, 0.1, -0.01], [0.22, -0.12, -0.07], [0.36, -0.4, -0.08], [0.46, -0.76, -0.02]] },
+  { w: 0.068, up: [1, 0, 0], pts: [[-0.02, 0.12, -0.08], [-0.1, -0.08, -0.14], [-0.16, -0.36, -0.12], [-0.2, -0.68, -0.06]] },
+  { w: 0.064, up: [1, 0, 0], pts: [[0.03, 0.12, -0.08], [0.12, -0.08, -0.14], [0.2, -0.34, -0.12], [0.24, -0.64, -0.04]] },
+  { w: 0.054, up: [0, 1, 0], pts: [[-0.12, 0.1, 0.02], [-0.24, -0.04, 0.04], [-0.38, -0.22, 0.0], [-0.5, -0.46, -0.04]] },
+  { w: 0.052, up: [0, 1, 0], pts: [[0.12, 0.1, 0.02], [0.24, -0.04, 0.04], [0.4, -0.22, 0.0], [0.52, -0.46, -0.04]] },
+  // A few narrower tips preserve motion and the broken, airy edge of the hair.
+  { w: 0.038, up: [0, 1, 0], pts: [[-0.02, 0.16, 0.14], [-0.08, 0.26, 0.16], [-0.18, 0.22, 0.12], [-0.3, 0.08, 0.06]] },
+  { w: 0.036, up: [0, 1, 0], pts: [[0.04, 0.16, 0.13], [0.12, 0.26, 0.15], [0.24, 0.22, 0.1], [0.36, 0.08, 0.04]] },
+  { w: 0.034, up: [0, 0, 1], pts: [[-0.08, 0.12, 0.08], [-0.18, -0.02, 0.12], [-0.34, -0.2, 0.08], [-0.48, -0.32, 0.0]] },
+  { w: 0.032, up: [0, 0, 1], pts: [[0.08, 0.12, 0.08], [0.18, -0.02, 0.12], [0.34, -0.2, 0.08], [0.48, -0.32, 0.0]] },
 ];
 
 function createFigure(material, hairMat, jointMat) {
@@ -710,22 +739,7 @@ function createFigure(material, hairMat, jointMat) {
   hips.name = 'hips';
 
   const realBody = lathe(
-    [
-      [-0.22, 0.048],
-      [-0.14, 0.078],
-      [-0.06, 0.1],
-      [0.02, 0.116],
-      [0.1, 0.12],
-      [0.16, 0.092],
-      [0.22, 0.074],
-      [0.3, 0.086],
-      [0.38, 0.1],
-      [0.46, 0.108],
-      [0.54, 0.1],
-      [0.62, 0.086],
-      [0.7, 0.058],
-      [0.78, 0.042],
-    ],
+    BODY_PROFILE,
     72,
     bodyDisplace,
   );
@@ -748,8 +762,8 @@ function createFigure(material, hairMat, jointMat) {
   const headMesh = attach(head, headGeo, material, null, 'head');
 
   const scalpGeo = new THREE.SphereGeometry(0.15, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.62);
-  scalpGeo.scale(0.96, 0.82, 1.02);
-  scalpGeo.translate(0, 0.045, -0.03);
+  scalpGeo.scale(1.0, 0.88, 1.06);
+  scalpGeo.translate(0, 0.05, -0.015);
   scalpGeo.computeVertexNormals();
   const scalp = attach(head, scalpGeo, hairMat, null, 'scalp');
 
@@ -760,12 +774,12 @@ function createFigure(material, hairMat, jointMat) {
   hair.add(builtHair.mesh);
   const strands = builtHair.strands;
 
-  const shoulderGeo = new THREE.SphereGeometry(0.052, 18, 14);
-  const elbowGeo = new THREE.SphereGeometry(0.032, 14, 12);
-  const kneeGeo = new THREE.SphereGeometry(0.046, 16, 12);
-  const ankleGeo = new THREE.SphereGeometry(0.024, 12, 10);
-  const palmGeo = new THREE.SphereGeometry(0.034, 16, 12);
-  palmGeo.scale(1.05, 1.25, 0.48);
+  const shoulderGeo = new THREE.SphereGeometry(0.066, 18, 14);
+  const elbowGeo = new THREE.SphereGeometry(0.04, 14, 12);
+  const kneeGeo = new THREE.SphereGeometry(0.052, 16, 12);
+  const ankleGeo = new THREE.SphereGeometry(0.028, 12, 10);
+  const palmGeo = new THREE.SphereGeometry(0.042, 16, 12);
+  palmGeo.scale(1.12, 1.3, 0.52);
   for (const geo of [shoulderGeo, elbowGeo, kneeGeo, ankleGeo, palmGeo]) {
     geo.userData.template = true;
   }
@@ -775,7 +789,7 @@ function createFigure(material, hairMat, jointMat) {
 
   for (const side of [1, -1]) {
     const tag = side > 0 ? 'L' : 'R';
-    const upper = bone(hips, `upper${tag}`, [0.2 * side, 0.63, 0.03]);
+    const upper = bone(hips, `upper${tag}`, [0.23 * side, 0.65, 0.03]);
     attach(upper, UPPER_GEO, material, null, `upper${tag}`);
     attach(upper, shoulderGeo, jointMat, [0, 0.01, 0], `shoulder${tag}`);
     const fore = bone(upper, `fore${tag}`, [0, -UPPER, 0]);
@@ -818,7 +832,7 @@ function createFigure(material, hairMat, jointMat) {
   const legs = {};
   for (const side of [1, -1]) {
     const tag = side > 0 ? 'L' : 'R';
-    const thigh = bone(hips, `thigh${tag}`, [0.055 * side, -0.02, 0.012]);
+    const thigh = bone(hips, `thigh${tag}`, [0.08 * side, -0.02, 0.012]);
     attach(thigh, THIGH_GEO, material, null, `thigh${tag}`);
     const shin = bone(thigh, `shin${tag}`, [0, -THIGH, 0]);
     attach(shin, SHIN_GEO, material, null, `shin${tag}`);
@@ -872,7 +886,7 @@ function stillLimbPoses() {
     { tag: 'R', side: -1, knee: v3(-0.86, -0.08, 0.38), foot: v3(-0.04, -0.06, 0.16), toes: v3(0.15, 0.2, 0.72) },
   ];
   for (const leg of legs) {
-    const thighPos = v3(0.06 * leg.side, -0.02, 0.02);
+    const thighPos = v3(0.08 * leg.side, -0.02, 0.02);
     const kneeDir = leg.knee.clone().normalize();
     const knee = thighPos.clone().addScaledVector(kneeDir, THIGH);
     const shinDir = leg.foot.clone().sub(knee).normalize();
@@ -894,7 +908,7 @@ function stillLimbPoses() {
     { tag: 'R', side: -1, hand: v3(-0.4, 0.02, 0.28), hint: v3(-0.7, -0.1, -0.45) },
   ];
   for (const arm of arms) {
-    const shoulder = v3(0.19 * arm.side, 0.63, 0.03);
+    const shoulder = v3(0.23 * arm.side, 0.65, 0.03);
     const ik = solveTwoBone(shoulder, arm.hand, UPPER, FORE, arm.hint);
     const upperQ = quatAimDown(ik.dirA);
     const foreQ = quatAimDown(ik.dirB.clone().applyQuaternion(upperQ.clone().invert()));
@@ -911,25 +925,59 @@ function stillLimbPoses() {
   return pose;
 }
 
+function radiantLimbPoses() {
+  const up = v3(0, 1, 0);
+  const pose = {};
+
+  const legs = [
+    { tag: 'L', side: 1, ankle: v3(0.16, -0.9, 0.04), hint: v3(0.12, 0.04, 0.36), toes: v3(0.12, -0.92, 0.3) },
+    { tag: 'R', side: -1, ankle: v3(-0.22, -0.8, 0.12), hint: v3(-0.18, 0.02, 0.4), toes: v3(-0.16, -0.9, 0.34) },
+  ];
+  for (const leg of legs) {
+    const thighPos = v3(0.08 * leg.side, -0.02, 0.012);
+    const ik = solveTwoBone(thighPos, leg.ankle, THIGH, SHIN, leg.hint);
+    const thighQ = quatAimDown(ik.dirA);
+    const shinQ = quatAimDown(ik.dirB.clone().applyQuaternion(thighQ.clone().invert()));
+    const shinWorld = thighQ.clone().multiply(shinQ);
+    const footQ = quatAimDownWithUp(
+      leg.toes.clone().applyQuaternion(shinWorld.clone().invert()),
+      up.clone().applyQuaternion(shinWorld.clone().invert()),
+    );
+    pose[`thigh${leg.tag}`] = poseOf(thighPos.toArray(), thighQ);
+    pose[`shin${leg.tag}`] = poseOf([0, -THIGH, 0], shinQ);
+    pose[`foot${leg.tag}`] = poseOf([0, -SHIN, 0], footQ);
+  }
+
+  const arms = [
+    { tag: 'L', side: 1, hand: v3(0.44, 0.2, 0.25), hint: v3(0.58, 0.1, -0.42), finger: v3(0.58, -0.34, 0.42) },
+    { tag: 'R', side: -1, hand: v3(-0.38, 0.08, 0.3), hint: v3(-0.58, 0.08, -0.34), finger: v3(-0.42, -0.38, 0.52) },
+  ];
+  for (const arm of arms) {
+    const shoulder = v3(0.23 * arm.side, 0.65, 0.03);
+    const ik = solveTwoBone(shoulder, arm.hand, UPPER, FORE, arm.hint);
+    const upperQ = quatAimDown(ik.dirA);
+    const foreQ = quatAimDown(ik.dirB.clone().applyQuaternion(upperQ.clone().invert()));
+    const armWorld = upperQ.clone().multiply(foreQ);
+    const handQ = quatAimDownWithUp(
+      arm.finger.clone().normalize().applyQuaternion(armWorld.clone().invert()),
+      up.clone().applyQuaternion(armWorld.clone().invert()),
+    );
+    pose[`upper${arm.tag}`] = poseOf(shoulder.toArray(), upperQ);
+    pose[`fore${arm.tag}`] = poseOf([0, -UPPER, 0], foreQ);
+    pose[`hand${arm.tag}`] = poseOf([0, -FORE, 0], handQ);
+  }
+  return pose;
+}
+
 function assignPoses(nodes) {
   const limbs = stillLimbPoses();
+  const radiantLimbs = radiantLimbPoses();
 
   const radiant = {
     hips: poseOf([0, 1.1, 0], [0.03, -0.08, 0.035]),
     neck: poseOf([0, 0.74, 0.012], [-0.06, -0.18, 0.02]),
     head: poseOf([0, 0.145, 0.01], [0.28, -0.62, 0.08]),
-    upperL: poseOf([0.19, 0.63, 0.03], [-0.14, 0.18, -0.38]),
-    foreL: poseOf([0, -UPPER, 0], [-0.22, 0.12, 0.28]),
-    handL: poseOf([0, -FORE, 0], [0.15, -0.7, 0.35]),
-    upperR: poseOf([-0.19, 0.63, 0.03], [-0.1, -0.12, 0.36]),
-    foreR: poseOf([0, -UPPER, 0], [-0.18, -0.08, -0.26]),
-    handR: poseOf([0, -FORE, 0], [0.12, 0.65, -0.32]),
-    thighL: poseOf([0.052, -0.02, 0.012], [-0.04, 0.04, -0.03]),
-    shinL: poseOf([0, -THIGH, 0], [0.06, 0, 0]),
-    footL: poseOf([0, -SHIN, 0], [-0.18, 0.04, 0]),
-    thighR: poseOf([-0.05, -0.02, 0.01], [0.02, -0.05, 0.035]),
-    shinR: poseOf([0, -THIGH, 0], [0.04, 0, 0]),
-    footR: poseOf([0, -SHIN, 0], [-0.12, -0.06, 0]),
+    ...radiantLimbs,
   };
 
   const still = {
@@ -990,13 +1038,19 @@ export function createAngel(marble) {
   const group = new THREE.Group();
   group.name = 'angel';
 
-  const hairMat = marble.body.clone();
-  hairMat.side = THREE.DoubleSide;
-  hairMat.polygonOffset = true;
-  hairMat.polygonOffsetFactor = -1;
-  hairMat.polygonOffsetUnits = -2;
+  const ownsHairMat = !marble.hair;
+  const hairMat = marble.hair || marble.body.clone();
+  if (ownsHairMat) {
+    hairMat.side = THREE.DoubleSide;
+    hairMat.polygonOffset = true;
+    hairMat.polygonOffsetFactor = -1;
+    hairMat.polygonOffsetUnits = -2;
+  }
 
   const jointMat = marble.body.clone();
+  jointMat.userData.isJoint = true;
+  jointMat.clearcoat = 0.24;
+  jointMat.clearcoatRoughness = 0.44;
   jointMat.polygonOffset = true;
   jointMat.polygonOffsetFactor = -1;
   jointMat.polygonOffsetUnits = -4;
@@ -1017,8 +1071,15 @@ export function createAngel(marble) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     const color = new THREE.Color();
     for (let i = 0; i < count; i++) {
-      const lift = 0.9 + (1 - recipes[index][i].layerF) * 0.1;
-      color.setRGB(lift, lift, Math.min(1, lift + 0.01));
+      const r = recipes[index][i];
+      // Channel R: wing-root progression from shoulder attachment (0) to outer span (1)
+      const rootShade = 0.14 + 0.86 * smoothstep(0.0, 0.42, r.t);
+      // Channel G: recessed layer & inner-row shading so feather groups separate cleanly
+      const layerBase = r.layerF < 0.25 ? 0.98 : r.layerF < 0.75 ? 0.52 : 0.68;
+      const rowShade = THREE.MathUtils.lerp(0.44, 1.0, smoothstep(-1.0, 0.55, r.rowF));
+      const rowLayerShade = THREE.MathUtils.clamp(layerBase * rowShade, 0.18, 1.0);
+      // Channel B: layer role (0 = long primaries, 0.5 = recessed secondaries, 1 = front coverts)
+      color.setRGB(rootShade, rowLayerShade, r.layerF);
       mesh.setColorAt(i, color);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -1104,7 +1165,7 @@ export function createAngel(marble) {
         );
         current[i].copy(hairPoint);
       }
-      writeRibbon(geo, current, strand.width, strand.up, strand.vertex, strand.curve);
+      writeRibbon(geo, current, strand.width, strand.depth, strand.up, strand.vertex, strand.curve);
     });
     geo.computeVertexNormals();
     const wind = (1 - blend * 0.7) * motion;
@@ -1230,7 +1291,7 @@ export function createAngel(marble) {
         if (obj.isInstancedMesh) obj.dispose();
       });
       for (const geometry of geometries) geometry.dispose();
-      hairMat.dispose();
+      if (ownsHairMat) hairMat.dispose();
       jointMat.dispose();
       group.removeFromParent();
     },

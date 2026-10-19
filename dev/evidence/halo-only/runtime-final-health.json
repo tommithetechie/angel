@@ -1,0 +1,19 @@
+{
+  "state": {
+    "href": "http://127.0.0.1:5175/angel/?review=1&time=3.2",
+    "title": "Halo",
+    "body": "HALO\n\nHERO",
+    "canvas": [
+      [
+        1440,
+        900
+      ]
+    ],
+    "labels": [
+      "Animated gold halo and two orbital light trails",
+      "Return to centered halo view"
+    ]
+  },
+  "consoleEvents": [],
+  "failedRequests": []
+}

@@ -1,3 +1,6 @@
 node_modules
 dist
 .DS_Store
+
+# Full-resolution Virgo source (kept local only; the site uses public/models/)
+virgo/

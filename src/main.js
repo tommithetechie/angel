@@ -10,6 +10,7 @@ import { createRings } from './rings.js';
 import { createParticles } from './particles.js';
 import { createFloor } from './floor.js';
 import { createDebris } from './debris.js';
+import { createVirgoModel } from './virgoModel.js';
 
 const params = new URLSearchParams(window.location.search);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -80,9 +81,10 @@ const rings = createRings();
 const particles = createParticles();
 const debris = createDebris();
 const floor = createFloor(scene, quality);
-const modules = [rings, particles, debris, floor];
+const virgo = createVirgoModel();
+const modules = [rings, particles, debris, floor, virgo];
 scene.add(rings.group);
-scene.add(particles.group, debris.group, floor.group);
+scene.add(particles.group, debris.group, floor.group, virgo.group);
 
 function placeMoon() {
   const portrait = window.innerWidth / Math.max(window.innerHeight, 1) < 0.82;
@@ -191,6 +193,15 @@ const clock = new THREE.Clock();
 clock.getDelta();
 let frameId = 0;
 let released = false;
+virgo.ready
+  .then(() => {
+    if (released) return;
+    heroFrameDirty = true;
+    document.documentElement.dataset.virgo = 'ready';
+  })
+  .catch((error) => {
+    console.error(error);
+  });
 
 function frame() {
   if (released) return;
@@ -326,6 +337,12 @@ function applyHeroFrame(snap = false) {
   rings.update(review.enabled ? review.time : 0, 0);
   rings.group.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(rings.group);
+  virgo.group.updateMatrixWorld(true);
+  const figure = new THREE.Box3().setFromObject(virgo.group);
+  if (!figure.isEmpty()) {
+    if (bounds.isEmpty()) bounds.copy(figure);
+    else bounds.union(figure);
+  }
   if (bounds.isEmpty()) return;
 
   const size = bounds.getSize(new THREE.Vector3());
@@ -532,7 +549,22 @@ function createHud() {
   const actions = document.createElement('div');
   actions.className = 'hud-actions';
   actions.append(resetButton);
-  root.append(title, actions);
+
+  const credit = document.createElement('p');
+  credit.className = 'hud-credit';
+  const titleLink = document.createElement('a');
+  titleLink.href = 'https://sketchfab.com/3d-models/virgo-369b136160b14d2d9067c171555b85aa';
+  titleLink.target = '_blank';
+  titleLink.rel = 'noopener noreferrer';
+  titleLink.textContent = '"Virgo" by Ognomdrol';
+  const licenseLink = document.createElement('a');
+  licenseLink.href = 'https://creativecommons.org/licenses/by/4.0/';
+  licenseLink.target = '_blank';
+  licenseLink.rel = 'noopener noreferrer';
+  licenseLink.textContent = 'CC BY 4.0';
+  credit.append(titleLink, document.createTextNode(', '), licenseLink);
+
+  root.append(title, actions, credit);
   document.body.append(root);
 
   return { root, resetButton };

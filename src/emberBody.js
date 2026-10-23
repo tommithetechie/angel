@@ -139,16 +139,19 @@ function measureSockets(root) {
     }
     absX.sort((a, b) => a - b);
     zs.sort((a, b) => a - b);
-    const x = absX.length ? absX[Math.floor(0.86 * (absX.length - 1))] * xFactor : 0.12;
-    const backZ = zs.length ? zs[Math.floor(0.2 * (zs.length - 1))] : -0.04;
+    // Sit closer to the spine on the cleaned backplate.
+    const x = absX.length ? absX[Math.floor(0.78 * (absX.length - 1))] * xFactor : 0.1;
+    // Prefer the denser armor back (deeper percentile) now that stumps are gone.
+    const backZ = zs.length ? zs[Math.floor(0.12 * (zs.length - 1))] : -0.04;
     const node = new THREE.Group();
-    node.position.set(THREE.MathUtils.clamp(x, 0.045, 0.22), y, backZ - zPush);
+    node.position.set(THREE.MathUtils.clamp(x, 0.04, 0.18), y, backZ - zPush);
     return node;
   }
 
-  const upper = place(0.78, 0.9, 0.016);
-  const mid = place(0.6, 0.74, 0.022);
-  const lower = place(0.45, 0.5, 0.016);
+  // Nest roots into the plate so procedural feathers meet armor, not air.
+  const upper = place(0.78, 0.72, 0.042);
+  const mid = place(0.6, 0.58, 0.048);
+  const lower = place(0.45, 0.4, 0.038);
   const mirror = (node, name, sign) => {
     const socket = new THREE.Group();
     socket.name = name;

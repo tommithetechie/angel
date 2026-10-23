@@ -10,7 +10,9 @@ import { createRings } from './rings.js';
 import { createParticles } from './particles.js';
 import { createFloor } from './floor.js';
 import { createDebris } from './debris.js';
-import { createVirgoModel } from './virgoModel.js';
+import { createMarble } from './marble.js';
+import { createWingRig } from './angel.js';
+import { createEmberBody } from './emberBody.js';
 
 const params = new URLSearchParams(window.location.search);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -28,7 +30,7 @@ renderer.setClearColor(0x070504, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.84;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.domElement.setAttribute('aria-label', 'Animated gold halo and two orbital light trails');
+renderer.domElement.setAttribute('aria-label', 'Animated gold halo, orbital light trails, and a winged figure');
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -81,10 +83,16 @@ const rings = createRings();
 const particles = createParticles();
 const debris = createDebris();
 const floor = createFloor(scene, quality);
-const virgo = createVirgoModel();
-const modules = [rings, particles, debris, floor, virgo];
+const marble = createMarble(renderer);
+const body = createEmberBody();
+const wings = createWingRig(marble.wing);
+// Authored feather curves belong to the taller procedural seraph. Fit them
+// down slightly so they sit on this shorter warrior without changing the generator.
+const WING_FIT = 0.85;
+wings.group.visible = false;
+const modules = [rings, particles, debris, floor, body, wings, marble];
 scene.add(rings.group);
-scene.add(particles.group, debris.group, floor.group, virgo.group);
+scene.add(particles.group, debris.group, floor.group, body.group, wings.group);
 
 function placeMoon() {
   const portrait = window.innerWidth / Math.max(window.innerHeight, 1) < 0.82;
@@ -187,17 +195,23 @@ if (typeof ResizeObserver === 'function') {
 }
 
 resize();
-applyHeroFrame(true);
+if (review.view === 'orbit') applyOrbitFrame();
+else applyHeroFrame(true);
 
 const clock = new THREE.Clock();
 clock.getDelta();
 let frameId = 0;
 let released = false;
-virgo.ready
-  .then(() => {
+body.ready
+  .then((placement) => {
     if (released) return;
+    attachWings(placement);
+    wings.group.visible = true;
+    wings.update(review.enabled ? review.time : 0);
     heroFrameDirty = true;
-    document.documentElement.dataset.virgo = 'ready';
+    if (review.view === 'orbit') applyOrbitFrame();
+    document.documentElement.dataset.body = 'ready';
+    if (review.enabled) window.__angelReview = { placement, body: body.group, wings, camera, controls };
   })
   .catch((error) => {
     console.error(error);
@@ -236,6 +250,8 @@ function frame() {
   particles.update(time, dt);
   debris.update(time, dt);
   floor.update(time, dt);
+  marble.update(time);
+  if (wings.group.visible) wings.update(time);
   grade.uniforms.uTime.value = time;
 
   composer.render();
@@ -310,6 +326,7 @@ function parseReview(search) {
     time: Math.max(0, readNumber('time') ?? readNumber('t') ?? 0),
     showRings: search.get('rings') !== '0',
     showAtmosphere: search.get('atmosphere') !== '0',
+    view: search.get('view') === 'orbit' ? 'orbit' : 'hero',
   };
 }
 
@@ -337,8 +354,20 @@ function applyHeroFrame(snap = false) {
   rings.update(review.enabled ? review.time : 0, 0);
   rings.group.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(rings.group);
-  virgo.group.updateMatrixWorld(true);
-  const figure = new THREE.Box3().setFromObject(virgo.group);
+  body.group.updateMatrixWorld(true);
+  const figure = new THREE.Box3().setFromObject(body.group);
+  if (wings.group.visible) {
+    wings.update(review.enabled ? review.time : 0);
+    wings.group.updateMatrixWorld(true);
+    wings.group.traverse((obj) => {
+      if (obj.isInstancedMesh) obj.computeBoundingBox();
+    });
+    const wingBox = new THREE.Box3().setFromObject(wings.group);
+    if (!wingBox.isEmpty()) {
+      if (figure.isEmpty()) figure.copy(wingBox);
+      else figure.union(wingBox);
+    }
+  }
   if (!figure.isEmpty()) {
     if (bounds.isEmpty()) bounds.copy(figure);
     else bounds.union(figure);
@@ -372,6 +401,34 @@ function applyHeroFrame(snap = false) {
   camera.position.copy(position);
   controls.target.copy(target);
   controls.update();
+}
+
+function applyOrbitFrame() {
+  camera.fov = 32;
+  camera.updateProjectionMatrix();
+  heroAnchorTarget.set(0, 1.42, 0.04);
+  heroAnchorPosition.set(3.35, 2.05, 4.85);
+  heroFrameReady = true;
+  heroFrameDirty = false;
+  heroFrameAnimating = false;
+  sceneOwnsCamera = false;
+  camera.position.copy(heroAnchorPosition);
+  controls.target.copy(heroAnchorTarget);
+  controls.update();
+}
+
+function attachWings(placement) {
+  const scale = placement.scale || 1;
+  const sockets = placement.sockets || {};
+  for (const name of Object.keys(wings.bones)) {
+    const socket = sockets[name];
+    if (!socket) continue;
+    socket.scale.setScalar(WING_FIT / scale);
+    socket.add(wings.bones[name]);
+    wings.bones[name].position.set(0, 0, 0);
+    wings.bones[name].rotation.set(0, 0, 0);
+    wings.bones[name].scale.set(1, 1, 1);
+  }
 }
 
 function applyHeroDrift(dt) {
@@ -553,10 +610,10 @@ function createHud() {
   const credit = document.createElement('p');
   credit.className = 'hud-credit';
   const titleLink = document.createElement('a');
-  titleLink.href = 'https://sketchfab.com/3d-models/virgo-369b136160b14d2d9067c171555b85aa';
+  titleLink.href = 'https://sketchfab.com/3d-models/ember-winged-fallen-angel-warrior-a47e02e8f82640deb483c97cca81bb67';
   titleLink.target = '_blank';
   titleLink.rel = 'noopener noreferrer';
-  titleLink.textContent = '"Virgo" by Ognomdrol';
+  titleLink.textContent = '"Ember Winged Fallen Angel Warrior" by Pigcraft';
   const licenseLink = document.createElement('a');
   licenseLink.href = 'https://creativecommons.org/licenses/by/4.0/';
   licenseLink.target = '_blank';

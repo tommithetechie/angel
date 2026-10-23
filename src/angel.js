@@ -1028,6 +1028,193 @@ function lerpPose(outP, outH, a, b, t) {
   for (let i = 0; i < 3; i++) outH[i].copy(a.hints[i]).lerp(b.hints[i], t);
 }
 
+const WING_BONES = ['wingUL', 'wingUR', 'wingML', 'wingMR', 'wingLL', 'wingLR'];
+
+const wingScratchP = [v3(), v3(), v3(), v3()];
+const wingScratchH = [v3(), v3(), v3()];
+const wingInvGroup = new THREE.Matrix4();
+const wingBoneM = new THREE.Matrix4();
+const wingOrigin = new THREE.Vector3();
+const wingTangent = new THREE.Vector3();
+const wingHint = new THREE.Vector3();
+const wingDir = new THREE.Vector3();
+const wingStack = new THREE.Vector3();
+const wingQuat = new THREE.Quaternion();
+const wingScale = new THREE.Vector3(1, 1, 1);
+
+function createWingInstances(wingMaterial, parent) {
+  const specs = makeWingSpecs(preferLight());
+  const recipes = buildRecipes(specs, mulberry32(0xa11e));
+  const featherGeo = createFeatherGeometry();
+  return specs.map((spec, index) => {
+    const count = recipes[index].length;
+    const mesh = new THREE.InstancedMesh(featherGeo, wingMaterial, count);
+    mesh.name = spec.name;
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const color = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const r = recipes[index][i];
+      // Channel R: wing-root progression from shoulder attachment (0) to outer span (1)
+      const rootShade = 0.14 + 0.86 * smoothstep(0.0, 0.42, r.t);
+      // Channel G: recessed layer & inner-row shading so feather groups separate cleanly
+      const layerBase = r.layerF < 0.25 ? 0.98 : r.layerF < 0.75 ? 0.52 : 0.68;
+      const rowShade = THREE.MathUtils.lerp(0.44, 1.0, smoothstep(-1.0, 0.55, r.rowF));
+      const rowLayerShade = THREE.MathUtils.clamp(layerBase * rowShade, 0.18, 1.0);
+      // Channel B: layer role (0 = long primaries, 0.5 = recessed secondaries, 1 = front coverts)
+      color.setRGB(rootShade, rowLayerShade, r.layerF);
+      mesh.setColorAt(i, color);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    parent.add(mesh);
+    return { spec, mesh, recipes: recipes[index] };
+  });
+}
+
+function applyWingSway(bones, time, blend, calmMotion) {
+  const breath = Math.sin(time * 1.45);
+  const calm = 1 - blend * 0.45;
+  const swayAmp = (1 - blend * 0.62) * calm * calmMotion;
+  const wingMotion = {
+    wingUL: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, Math.sin(time * 0.62 + 1.1) * 0.07],
+    wingUR: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, -Math.sin(time * 0.62 + 1.1) * 0.07],
+    wingML: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, Math.sin(time * 0.58) * 0.09 + breath * 0.028],
+    wingMR: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, -(Math.sin(time * 0.58) * 0.09 + breath * 0.028)],
+    wingLL: [Math.sin(time * 0.46 + 1.4) * 0.06, 0, Math.sin(time * 0.4 + 0.8) * 0.05],
+    wingLR: [Math.sin(time * 0.46 + 1.4) * 0.06, 0, -Math.sin(time * 0.4 + 0.8) * 0.05],
+  };
+  for (const name of WING_BONES) {
+    const [x, y, z] = wingMotion[name];
+    bones[name].rotation.set(x * swayAmp, y * swayAmp, z * swayAmp);
+  }
+}
+
+function updateWingInstances(wings, bones, group, time, blend, calmMotion) {
+  wingInvGroup.copy(group.matrixWorld).invert();
+  const breathLift = Math.sin(time * 1.45);
+  for (const wing of wings) {
+    const spec = wing.spec;
+    const node = bones[spec.bone];
+    wingBoneM.multiplyMatrices(wingInvGroup, node.matrixWorld);
+    lerpPose(wingScratchP, wingScratchH, spec.open, spec.closed, blend);
+    const open = spec.open;
+    const closed = spec.closed;
+    const outW = THREE.MathUtils.lerp(open.out, closed.out, blend);
+    const lenMul = THREE.MathUtils.lerp(open.lenMul, closed.lenMul, blend) * (spec.lenBias || 1);
+    const widthMul = THREE.MathUtils.lerp(open.width, closed.width, blend);
+    const fan0 = THREE.MathUtils.lerp(open.fan0, closed.fan0, blend);
+    const fan1 = THREE.MathUtils.lerp(open.fan1, closed.fan1, blend);
+
+    wing.recipes.forEach((recipe, index) => {
+      const t = recipe.t;
+      cubicInto(wingOrigin, wingScratchP[0], wingScratchP[1], wingScratchP[2], wingScratchP[3], t);
+      cubicTangentInto(wingTangent, wingScratchP[0], wingScratchP[1], wingScratchP[2], wingScratchP[3], t);
+      sampleHint(wingHint, wingScratchH, t);
+      wingOrigin.applyMatrix4(wingBoneM);
+      wingTangent.transformDirection(wingBoneM);
+      wingHint.transformDirection(wingBoneM);
+
+      const fan = THREE.MathUtils.lerp(fan0, fan1, t);
+      let ang = recipe.rowF * fan + (recipe.layerF - 0.5) * fan * 0.35 + (recipe.seed - 0.5) * 0.06;
+      if (spec.kind === 'middle' && t > 0.72) ang += recipe.rowF * (t - 0.72) * 0.55;
+      if (spec.kind === 'lower') ang *= 1 - t * 0.35;
+      wingDir.copy(wingHint).lerp(wingTangent, 1 - outW).normalize();
+      _q.setFromAxisAngle(wingTangent, ang);
+      wingDir.applyQuaternion(_q);
+
+      wingStack.crossVectors(wingTangent, wingDir);
+      if (wingStack.lengthSq() < 1e-8) wingStack.set(0, 0, 1);
+      wingStack.normalize();
+      if (wingStack.z < 0) wingStack.negate();
+
+      const flap =
+        (Math.sin(time * 2.4 - t * 4.2 + recipe.seed * 7.5) * 0.65 +
+          Math.sin(time * 0.7 - t * 1.6 + recipe.alt * 4) * 0.35) *
+        spec.flutter *
+        1.35 *
+        (0.35 + t) *
+        (recipe.layerF < 0.34 ? 1.15 : 0.75) *
+        (1 - blend * 0.5) *
+        calmMotion;
+      _q2.setFromAxisAngle(wingStack, flap);
+      wingDir.applyQuaternion(_q2).normalize();
+
+      const scallop = recipe.layerF < 0.34 && recipe.seed > 0.62 ? 1.2 : 1;
+      const len =
+        featherEnvelope(spec.kind, t, recipe.rowF, recipe.layerF) *
+        lenMul *
+        (0.84 + recipe.seed * 0.3) *
+        scallop;
+      // Separate layers along the wing normal by more than the vane camber,
+      // plus a stable per-feather bias so neighbors don't sit on one plane.
+      const lift = (recipe.layerF - 0.5) * 0.05 + (recipe.alt - 0.5) * 0.012;
+      wingOrigin.addScaledVector(wingStack, lift);
+      wingOrigin.y += breathLift * 0.004 * (1 - blend);
+      wingOrigin.addScaledVector(wingDir, 0.01 + recipe.layerF * 0.006);
+
+      basisQuat(wingQuat, wingDir, wingStack);
+      _q.setFromAxisAngle(wingDir, (recipe.alt - 0.5) * 0.35);
+      wingQuat.multiply(_q);
+      wingScale.set(widthMul * (0.82 + recipe.seed * 0.36) * (1 - recipe.layerF * 0.18), Math.max(0.05, len), 1);
+      _m.compose(wingOrigin, wingQuat, wingScale);
+      wing.mesh.setMatrixAt(index, _m);
+    });
+    wing.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+/**
+ * Six procedural wings. Bones start on an unattached anchor group so a
+ * caller can parent them onto another figure. Feather instances stay in
+ * `group` and follow those bones.
+ */
+export function createWingRig(wingMaterial) {
+  const group = new THREE.Group();
+  group.name = 'procedural-wings';
+  const wings = createWingInstances(wingMaterial, group);
+  const anchors = new THREE.Group();
+  anchors.name = 'wing-anchors';
+  const bones = {};
+  for (const name of WING_BONES) bones[name] = bone(anchors, name, [0, 0, 0]);
+
+  const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let blend = 0;
+  let disposed = false;
+
+  return {
+    group,
+    bones,
+    update(time) {
+      if (disposed) return;
+      const t = Number.isFinite(time) ? time : 0;
+      const calmMotion = motionQuery && motionQuery.matches ? 0.2 : 1;
+      applyWingSway(bones, t, blend, calmMotion);
+      for (const name of WING_BONES) bones[name].updateWorldMatrix(true, false);
+      group.updateMatrixWorld(true);
+      updateWingInstances(wings, bones, group, t, blend, calmMotion);
+    },
+    setForm(form, value) {
+      const raw = value === undefined || value === null ? 1 : Number(value);
+      if (!Number.isFinite(raw)) return;
+      const k = THREE.MathUtils.clamp(raw, 0, 1);
+      if (form === 'still') blend = k;
+      else if (form === 'radiant') blend = 1 - k;
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      const geometries = new Set();
+      group.traverse((obj) => {
+        if (obj.geometry) geometries.add(obj.geometry);
+        if (obj.isInstancedMesh) obj.dispose();
+      });
+      for (const geometry of geometries) geometry.dispose();
+      group.removeFromParent();
+      anchors.removeFromParent();
+    },
+  };
+}
+
 /**
  * Seraph sculpt. `setForm('still', t)` settles into a seated meditation
  * with the wings folded in; `setForm('radiant', t)` opens the reference
@@ -1058,49 +1245,11 @@ export function createAngel(marble) {
   const figure = createFigure(marble.body, hairMat, jointMat);
   group.add(figure.hips);
 
-  const light = preferLight();
-  const specs = makeWingSpecs(light);
-  const rand = mulberry32(0xa11e);
-  const recipes = buildRecipes(specs, rand);
-  const featherGeo = createFeatherGeometry();
-  const wings = specs.map((spec, index) => {
-    const count = recipes[index].length;
-    const mesh = new THREE.InstancedMesh(featherGeo, marble.wing, count);
-    mesh.name = spec.name;
-    mesh.frustumCulled = false;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    const color = new THREE.Color();
-    for (let i = 0; i < count; i++) {
-      const r = recipes[index][i];
-      // Channel R: wing-root progression from shoulder attachment (0) to outer span (1)
-      const rootShade = 0.14 + 0.86 * smoothstep(0.0, 0.42, r.t);
-      // Channel G: recessed layer & inner-row shading so feather groups separate cleanly
-      const layerBase = r.layerF < 0.25 ? 0.98 : r.layerF < 0.75 ? 0.52 : 0.68;
-      const rowShade = THREE.MathUtils.lerp(0.44, 1.0, smoothstep(-1.0, 0.55, r.rowF));
-      const rowLayerShade = THREE.MathUtils.clamp(layerBase * rowShade, 0.18, 1.0);
-      // Channel B: layer role (0 = long primaries, 0.5 = recessed secondaries, 1 = front coverts)
-      color.setRGB(rootShade, rowLayerShade, r.layerF);
-      mesh.setColorAt(i, color);
-    }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    group.add(mesh);
-    return { spec, mesh, recipes: recipes[index] };
-  });
+  const wings = createWingInstances(marble.wing, group);
 
   const posedNames = assignPoses(figure.nodes);
   let formBlend = 0;
 
-  const scratchP = [v3(), v3(), v3(), v3()];
-  const scratchH = [v3(), v3(), v3()];
-  const invGroup = new THREE.Matrix4();
-  const boneM = new THREE.Matrix4();
-  const origin = new THREE.Vector3();
-  const tangent = new THREE.Vector3();
-  const hint = new THREE.Vector3();
-  const dir = new THREE.Vector3();
-  const stack = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  const scale = new THREE.Vector3(1, 1, 1);
   const hairPoint = new THREE.Vector3();
   const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   let calmMotion = 1;
@@ -1131,19 +1280,7 @@ export function createAngel(marble) {
     for (const side of ['L', 'R']) {
       figure.nodes[`upper${side}`].position.y += breath * 0.014;
     }
-    const swayAmp = (1 - blend * 0.62) * calm * calmMotion;
-    const wingMotion = {
-      wingUL: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, Math.sin(time * 0.62 + 1.1) * 0.07],
-      wingUR: [Math.sin(time * 0.7 + 0.4) * 0.045, 0, -Math.sin(time * 0.62 + 1.1) * 0.07],
-      wingML: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, Math.sin(time * 0.58) * 0.09 + breath * 0.028],
-      wingMR: [Math.sin(time * 0.52 + 0.6) * 0.04, 0, -(Math.sin(time * 0.58) * 0.09 + breath * 0.028)],
-      wingLL: [Math.sin(time * 0.46 + 1.4) * 0.06, 0, Math.sin(time * 0.4 + 0.8) * 0.05],
-      wingLR: [Math.sin(time * 0.46 + 1.4) * 0.06, 0, -Math.sin(time * 0.4 + 0.8) * 0.05],
-    };
-    for (const name of Object.keys(wingMotion)) {
-      const [x, y, z] = wingMotion[name];
-      figure.nodes[name].rotation.set(x * swayAmp, y * swayAmp, z * swayAmp);
-    }
+    applyWingSway(figure.nodes, time, blend, calmMotion);
   }
 
   function updateHair(time, blend, motion) {
@@ -1174,77 +1311,7 @@ export function createAngel(marble) {
   }
 
   function updateFeathers(time, blend) {
-    invGroup.copy(group.matrixWorld).invert();
-    const breathLift = Math.sin(time * 1.45);
-    for (const wing of wings) {
-      const spec = wing.spec;
-      const node = figure.nodes[spec.bone];
-      boneM.multiplyMatrices(invGroup, node.matrixWorld);
-      lerpPose(scratchP, scratchH, spec.open, spec.closed, blend);
-      const open = spec.open;
-      const closed = spec.closed;
-      const outW = THREE.MathUtils.lerp(open.out, closed.out, blend);
-      const lenMul = THREE.MathUtils.lerp(open.lenMul, closed.lenMul, blend) * (spec.lenBias || 1);
-      const widthMul = THREE.MathUtils.lerp(open.width, closed.width, blend);
-      const fan0 = THREE.MathUtils.lerp(open.fan0, closed.fan0, blend);
-      const fan1 = THREE.MathUtils.lerp(open.fan1, closed.fan1, blend);
-
-      wing.recipes.forEach((recipe, index) => {
-        const t = recipe.t;
-        cubicInto(origin, scratchP[0], scratchP[1], scratchP[2], scratchP[3], t);
-        cubicTangentInto(tangent, scratchP[0], scratchP[1], scratchP[2], scratchP[3], t);
-        sampleHint(hint, scratchH, t);
-        origin.applyMatrix4(boneM);
-        tangent.transformDirection(boneM);
-        hint.transformDirection(boneM);
-
-        const fan = THREE.MathUtils.lerp(fan0, fan1, t);
-        let ang = recipe.rowF * fan + (recipe.layerF - 0.5) * fan * 0.35 + (recipe.seed - 0.5) * 0.06;
-        if (spec.kind === 'middle' && t > 0.72) ang += recipe.rowF * (t - 0.72) * 0.55;
-        if (spec.kind === 'lower') ang *= 1 - t * 0.35;
-        dir.copy(hint).lerp(tangent, 1 - outW).normalize();
-        _q.setFromAxisAngle(tangent, ang);
-        dir.applyQuaternion(_q);
-
-        stack.crossVectors(tangent, dir);
-        if (stack.lengthSq() < 1e-8) stack.set(0, 0, 1);
-        stack.normalize();
-        if (stack.z < 0) stack.negate();
-
-        const flap =
-          (Math.sin(time * 2.4 - t * 4.2 + recipe.seed * 7.5) * 0.65 +
-            Math.sin(time * 0.7 - t * 1.6 + recipe.alt * 4) * 0.35) *
-          spec.flutter *
-          1.35 *
-          (0.35 + t) *
-          (recipe.layerF < 0.34 ? 1.15 : 0.75) *
-          (1 - blend * 0.5) *
-          calmMotion;
-        _q2.setFromAxisAngle(stack, flap);
-        dir.applyQuaternion(_q2).normalize();
-
-        const scallop = recipe.layerF < 0.34 && recipe.seed > 0.62 ? 1.2 : 1;
-        const len =
-          featherEnvelope(spec.kind, t, recipe.rowF, recipe.layerF) *
-          lenMul *
-          (0.84 + recipe.seed * 0.3) *
-          scallop;
-        // Separate layers along the wing normal by more than the vane camber,
-        // plus a stable per-feather bias so neighbors don't sit on one plane.
-        const lift = (recipe.layerF - 0.5) * 0.05 + (recipe.alt - 0.5) * 0.012;
-        origin.addScaledVector(stack, lift);
-        origin.y += breathLift * 0.004 * (1 - blend);
-        origin.addScaledVector(dir, 0.01 + recipe.layerF * 0.006);
-
-        basisQuat(quat, dir, stack);
-        _q.setFromAxisAngle(dir, (recipe.alt - 0.5) * 0.35);
-        quat.multiply(_q);
-        scale.set(widthMul * (0.82 + recipe.seed * 0.36) * (1 - recipe.layerF * 0.18), Math.max(0.05, len), 1);
-        _m.compose(origin, quat, scale);
-        wing.mesh.setMatrixAt(index, _m);
-      });
-      wing.mesh.instanceMatrix.needsUpdate = true;
-    }
+    updateWingInstances(wings, figure.nodes, group, time, blend, calmMotion);
   }
 
   const bodyMeshes = [];

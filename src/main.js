@@ -88,7 +88,7 @@ const body = createEmberBody();
 const wings = createWingRig(marble.wing);
 // Authored feather curves belong to the taller procedural seraph. Fit them
 // down slightly so they sit on this shorter warrior without changing the generator.
-const WING_FIT = 0.85;
+const WING_FIT = 0.78;
 wings.group.visible = false;
 const modules = [rings, particles, debris, floor, body, wings, marble];
 scene.add(rings.group);

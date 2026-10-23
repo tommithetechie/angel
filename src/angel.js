@@ -1055,8 +1055,9 @@ function createWingInstances(wingMaterial, parent) {
     const color = new THREE.Color();
     for (let i = 0; i < count; i++) {
       const r = recipes[index][i];
-      // Channel R: wing-root progression from shoulder attachment (0) to outer span (1)
-      const rootShade = 0.14 + 0.86 * smoothstep(0.0, 0.42, r.t);
+      // Channel R: wing-root progression from shoulder attachment (0) to outer span (1).
+      // Keep roots bright enough that they read as feathers on the armor, not dark stumps.
+      const rootShade = 0.42 + 0.58 * smoothstep(0.0, 0.42, r.t);
       // Channel G: recessed layer & inner-row shading so feather groups separate cleanly
       const layerBase = r.layerF < 0.25 ? 0.98 : r.layerF < 0.75 ? 0.52 : 0.68;
       const rowShade = THREE.MathUtils.lerp(0.44, 1.0, smoothstep(-1.0, 0.55, r.rowF));
